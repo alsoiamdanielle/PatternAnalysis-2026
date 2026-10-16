@@ -33,7 +33,7 @@ def load_data_2D(imageNames, shape, normImage, dtype, early_stop):
     num = len(imageNames)
     target_rows = shape[0]
     target_cols = shape[1]
-    images = np.zeros((num, target_rows, target_cols), dtype=dtype)
+    images = np.zeros((num, 1, target_rows, target_cols), dtype=dtype)
     
     for i, inName in enumerate(tqdm(imageNames)):
         niftiImage = nib.load(inName)
@@ -59,7 +59,7 @@ def load_data_2D(imageNames, shape, normImage, dtype, early_stop):
         if row_pad > 0 or col_pad > 0:
             inImage = np.pad(inImage, ((top_pad, bot_pad), (left_pad, right_pad)), 'constant', constant_values=0)
             
-        images[i, :, :] = inImage
+        images[i, 0, :, :] = inImage
         
         if i > 20 and early_stop:
             break
