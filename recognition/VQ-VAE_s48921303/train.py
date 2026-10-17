@@ -7,6 +7,7 @@ import torch
 import torch.nn.functional as F
 import torch.optim as optim
 import time
+from datetime import datetime
 
 
 def get_device():
@@ -16,6 +17,8 @@ def get_device():
         device = torch.device("mps")
     else:
         device = torch.device("cpu")
+
+    return device
 
 
 def load_data():
@@ -36,29 +39,34 @@ def train(vae, train_loader, device):
     vae.train()
     start = time.time()
     
-    with open(f'output.txt', 'w') as file:
-        for epoch in range(epochs):
-            running_loss = 0
-            for images in train_loader:
-                images = images.to(device)
-    
-                optimiser.zero_grad()
-    
-                pred, mean, log_var = vae(images)
-                loss = loss_fn(pred, images, mean, log_var)
-                loss.backward()
-                optimiser.step()
-    
-                running_loss += loss.item()
-    
-            print(f'epoch {epoch + 1} has avg loss {running_loss / len(train_loader)} at elapsed time {time.time() - start} secs')
+    for epoch in range(epochs):
+        running_loss = 0
+        for images in train_loader:
+            images = images.to(device)
 
+            optimiser.zero_grad()
+
+            pred, mean, log_var = vae(images)
+            loss = loss_fn(pred, images, mean, log_var)
+            loss.backward()
+            optimiser.step()
+
+            running_loss += loss.item()
+
+        print(f'epoch {epoch + 1} has avg loss {running_loss / len(train_loader)} at elapsed time {time.time() - start} secs')
+
+
+def save_model(vae):
+    os.makedirs('models', exist_ok=True)
+    torch.save(vae.state_dict(), 'models/vae: ' + datetime.now().strftime('%T_%d-%m-%y') + '.pth')
+    
 
 def main():
     device = get_device()
     train_loader = load_data()
     vae = modules.VAE().to(device)
     train(vae, train_loader, device)
+    save_model(vae)
 
 
 if __name__ == "__main__":

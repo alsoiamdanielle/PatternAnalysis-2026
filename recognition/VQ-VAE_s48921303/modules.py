@@ -37,6 +37,7 @@ class VAE(nn.Module):
             nn.Flatten()
         )
 
+        self.latent = latent
         self.mean = nn.Linear(64 * 64 * 36, latent)
         self.log_var = nn.Linear(64 * 64 * 36, latent)
         self.fc = nn.Sequential(
@@ -65,3 +66,12 @@ class VAE(nn.Module):
         x = self.dec(x)
 
         return x, mean, log_var
+
+    def sample(self, samples, device):
+        with torch.no_grad():
+            z = torch.randn(samples, self.latent, device=device)
+            gen = self.fc(z)
+            gen = gen.view(-1, 64, 64, 36)
+            gen = self.dec(gen)
+
+            return gen
