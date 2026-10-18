@@ -38,10 +38,10 @@ class VAE(nn.Module):
         )
 
         self.latent = latent
-        self.mean = nn.Linear(64 * 64 * 36, latent)
-        self.log_var = nn.Linear(64 * 64 * 36, latent)
+        self.mean = nn.Linear(64 * 64 * 32, latent)
+        self.log_var = nn.Linear(64 * 64 * 32, latent)
         self.fc = nn.Sequential(
-            nn.Linear(latent, 64 * 64 * 36),
+            nn.Linear(latent, 64 * 64 * 32),
             nn.ReLU(),
         )
 
@@ -61,7 +61,7 @@ class VAE(nn.Module):
         
         x = mean + std * epsilon
         x = self.fc(x)
-        x = x.view(-1, 64, 64, 36)
+        x = x.view(-1, 64, 64, 32)
         
         x = self.dec(x)
 
@@ -71,7 +71,7 @@ class VAE(nn.Module):
         with torch.no_grad():
             z = torch.randn(samples, self.latent, device=device)
             gen = self.fc(z)
-            gen = gen.view(-1, 64, 64, 36)
+            gen = gen.view(-1, 64, 64, 32)
             gen = self.dec(gen)
 
             return gen
