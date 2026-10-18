@@ -27,15 +27,15 @@ def load_data():
     return DataLoader(data, batch_size=32, shuffle=True)
 
 
-def loss_fn(pred, target, mean, log_var):
+def loss_fn(pred, target, mean, log_var, beta=10):
     mse = F.mse_loss(pred, target, reduction='sum') / pred.size(0)
     kl = -0.5 * torch.sum(1 + log_var - mean ** 2 - log_var.exp()) / pred.size(0)
-    return mse + kl
+    return mse + beta * kl
 
 
 def train(vae, train_loader, device):
     optimiser = optim.Adam(vae.parameters(), lr=0.0001)
-    epochs = 1
+    epochs = 30
     vae.train()
     start = time.time()
     

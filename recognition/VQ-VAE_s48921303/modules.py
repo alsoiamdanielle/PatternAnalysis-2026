@@ -47,7 +47,7 @@ class VAE(nn.Module):
 
         self.dec = nn.Sequential(
             Decoder(64, 32),
-            Decoder(32, 1),
+            nn.ConvTranspose2d(32, 1, kernel_size=4, stride=2, padding=1),
             nn.Sigmoid()
         )
 
