@@ -1,7 +1,7 @@
 # VQ-VAE for Generating Privacy-Preserving Synthetic HipMRI cohorts
 
 ## Feasibility Review
-## Project Description
+### Project Description
 This project involves the generation of synthetic HipMRI medical cohorts. These generated HipMRI cohorts will be used for data augmentation and anonymised sharing. The objective is to generate authentic physiological tissue boundaries and structures while abiding by the stringent patient data privacy laws.
 
 ### User Need, Scope & Acceptance Criteria
