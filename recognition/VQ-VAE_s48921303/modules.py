@@ -29,25 +29,23 @@ class Decoder(nn.Module):
 
 
 class VAE(nn.Module):
-    def __init__(self, latent=32):
+    def __init__(self, latent=16):
         super().__init__()
         self.enc = nn.Sequential(
             Encoder(1, 32),
             Encoder(32, 64),
-            Encoder(64, 128),
             nn.Flatten()
         )
 
         self.latent = latent
-        self.mean = nn.Linear(128 * 32 * 16, latent)
-        self.log_var = nn.Linear(128 * 32 * 16, latent)
+        self.mean = nn.Linear(64 * 64 * 32, latent)
+        self.log_var = nn.Linear(64 * 64 * 32, latent)
         self.fc = nn.Sequential(
-            nn.Linear(latent, 128 * 32 * 16),
+            nn.Linear(latent, 64 * 64 * 32),
             nn.ReLU(),
         )
 
         self.dec = nn.Sequential(
-            Decoder(128, 64),
             Decoder(64, 32),
             nn.ConvTranspose2d(32, 1, kernel_size=4, stride=2, padding=1),
             nn.Sigmoid()
@@ -63,7 +61,7 @@ class VAE(nn.Module):
         
         x = mean + std * epsilon
         x = self.fc(x)
-        x = x.view(-1, 128, 32, 16)
+        x = x.view(-1, 64, 64, 32)
         
         x = self.dec(x)
 
@@ -73,7 +71,7 @@ class VAE(nn.Module):
         with torch.no_grad():
             z = torch.randn(samples, self.latent, device=device)
             gen = self.fc(z)
-            gen = gen.view(-1, 128, 32, 16)
+            gen = gen.view(-1, 64, 64, 32)
             gen = self.dec(gen)
 
             return gen

@@ -56,14 +56,14 @@ def loss_fn(pred, target, mean, log_var, beta=1):
     return mse + beta * kl
 
 
-def test(vae, test_loader, device):
+def validate(vae, val_loader, device):
     ssim = StructuralSimilarityIndexMeasure(data_range=1.0).to(device)
     ssim_total = 0
     slices = 0
     vae.eval()
     
     with torch.no_grad():
-        for images in test_loader:
+        for images in val_loader:
             images = images.to(device)
 
             pred, _, _ = vae(images)
@@ -75,14 +75,19 @@ def test(vae, test_loader, device):
     return ssim_total / slices
 
 
-def train(vae, train_loader, test_loader, device):
+def train(vae, train_loader, val_loader, device):
     optimiser = optim.Adam(vae.parameters(), lr=0.0001)
     training_data = TrainingData()
-    vae.train()
     start = time.time()
     
     for epoch in range(epochs):
+        vae.train()
         running_loss = 0
+        peak_vram_mps = 0
+        if device.type == "cuda":
+            torch.cuda.reset_peak_memory_stats(device)
+        epoch_start = time.time()
+                
         for images in train_loader:
             images = images.to(device)
 
@@ -90,36 +95,50 @@ def train(vae, train_loader, test_loader, device):
 
             pred, mean, log_var = vae(images)
             loss = loss_fn(pred, images, mean, log_var)
+
+            if device.type == 'mps':
+                alloc = torch.mps.current_allocated_memory()
+                if alloc > peak_vram_mps:
+                    peak_vram_mps = alloc
+                
             loss.backward()
             optimiser.step()
 
             running_loss += loss.item()
 
         train_time = time.time()
-        
-        if epoch == 0:
-            epoch_time = train_time - start
+        epoch_time = train_time - epoch_start
+        ssim = validate(vae, val_loader, device)
+        if device.type == 'cuda':
+            peak_vram_mb = torch.cuda.max_memory_allocated(device) / (1024 ** 2)
+        elif device.type == 'mps':
+            peak_vram_mb = peak_vram_mps / (1024 ** 2)
         else:
-            epoch_time = train_time - prev_train_time
+            peak_vram_mb = 0
 
-        prev_train_time = train_time
-        ssim = test(vae, test_loader, device)
-        training_data.add(epoch, [epoch_time, ssim])
+        training_data.add(epoch, [epoch_time, ssim, peak_vram_mb])
         
-        print(f'Epoch {epoch + 1} has average loss of {running_loss / len(train_loader)} at elapsed time {train_time - start} secs with this epoch taking {epoch_time} and ssim of {ssim}')
-        
+        print('------------------------------------------------------------------------------')
+        print(f'Epoch {epoch + 1}:')
+        print(f'Average loss is {running_loss / len(train_loader)}')
+        print(f'Elapsed time for epoch is {epoch_time} seconds')
+        print(f'Total elapsed time is {time.time() - start} seconds')
+        print(f'SSIM is {ssim}')
+        print(f'Peak VRAM is {peak_vram_mb} MB')
 
     return training_data
 
 
 def save(vae, training_data):
     os.makedirs('train', exist_ok=True)
-    dir = 'train/' + datetime.now().strftime('%T_%d-%m-%y')
+    dir = 'train/' + datetime.now().strftime('%H-%M-%S_%d-%m-%y')
     os.makedirs(dir)
     torch.save(vae.state_dict(), dir + '/vae' + '.pth')
+    
     with open(dir + '/training data.csv', 'w', newline='') as file:
         writer = csv.writer(file, delimiter=',')
-        writer.writerow(['epoch', 'epoch_time_secs', 'val_ssim'])
+        writer.writerow(['epoch', 'epoch_time_secs', 'val_ssim', 'peak_vram'])
+        
         for epoch in range(epochs):
             writer.writerow([epoch] + training_data.get(epoch))
     
@@ -129,8 +148,8 @@ def main():
     train_loader = load_data('train')
     vae = modules.VAE().to(device)
     
-    test_loader = load_data('test')
-    training_data = train(vae, train_loader, test_loader, device)
+    val_loader = load_data('validate')
+    training_data = train(vae, train_loader, val_loader, device)
     
     save(vae, training_data)
 
