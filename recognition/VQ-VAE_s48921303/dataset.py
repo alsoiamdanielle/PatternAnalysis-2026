@@ -45,7 +45,9 @@ def load_data_2D(imageNames, shape, normImage, dtype, early_stop, pad):
         inImage = inImage.astype(dtype)
         
         if normImage:
-            inImage = (inImage - inImage.mean()) / (inImage.std() + 1e-8)
+            img_min = inImage.min()
+            img_max = inImage.max()
+            inImage = (inImage - img_min) / (img_max - img_min + 1e-8)
             
         rows, cols = inImage.shape
         

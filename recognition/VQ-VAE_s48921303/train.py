@@ -12,7 +12,7 @@ from torchmetrics.image import StructuralSimilarityIndexMeasure
 import csv
 
 
-epochs = 3
+epochs = 10
 
 
 class TrainingData():
@@ -50,7 +50,7 @@ def load_data(split):
     return DataLoader(data, batch_size=32, shuffle=True)
 
 
-def loss_fn(pred, target, mean, log_var, beta=10):
+def loss_fn(pred, target, mean, log_var, beta=1):
     mse = F.mse_loss(pred, target, reduction='sum') / pred.size(0)
     kl = -0.5 * torch.sum(1 + log_var - mean ** 2 - log_var.exp()) / pred.size(0)
     return mse + beta * kl
@@ -102,11 +102,12 @@ def train(vae, train_loader, test_loader, device):
         else:
             epoch_time = train_time - prev_train_time
 
-        print(f'Epoch {epoch + 1} has average loss of {running_loss / len(train_loader)} at elapsed time {train_time - start} secs with this epoch taking {epoch_time}')
-        
         prev_train_time = train_time
         ssim = test(vae, test_loader, device)
         training_data.add(epoch, [epoch_time, ssim])
+        
+        print(f'Epoch {epoch + 1} has average loss of {running_loss / len(train_loader)} at elapsed time {train_time - start} secs with this epoch taking {epoch_time} and ssim of {ssim}')
+        
 
     return training_data
 
