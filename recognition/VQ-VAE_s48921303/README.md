@@ -27,12 +27,33 @@ what is considered a baseline model? how much effort and time should i be puttin
 ### Preliminary Feasibility Evidence
 The dataset consists of slices of HipMRI scans stored in NifTI format which are split into train, test and validation data. Each patient cannot be in more than one of these 3 splits. The train data consists of 11400 scans of shape (256, 128) and 60 of shape (256, 144). The test data contains of 540 scans of shape (256, 128). The test data consists of 660 scans of shape (256, 128). The scans are greyscale so their channel dimensions is 1.
 
+I ran a VAE with 2 layers for encoder and decoder and 16 latent variables on an NVIDIA GeForce RTX 3090 as the baseline smoke-test experiment. Here is the data:
+| Epoch | Loss (MSE + KL) | Validation SSIM | Epoch Time (s) | Cumulative Time (s) | Peak VRAM (MB) |
+| :---: | :---: | :---: | :---: | :---: | :---: |
+| **1** | 2,638.65 | 0.1419 | 4.68 | 4.89 | 338.56 |
+| **2** | 840.47 | 0.2144 | 2.78 | 7.75 | 338.56 |
+| **3** | 654.57 | 0.2485 | 2.79 | 10.63 | 338.56 |
+| **4** | 578.11 | 0.2685 | 2.77 | 13.48 | 338.56 |
+| **5** | 538.26 | 0.2979 | 2.82 | 16.39 | 338.57 |
+| **6** | 513.05 | 0.3020 | 2.85 | 19.34 | 338.57 |
+| **7** | 496.40 | 0.3285 | 2.66 | 22.07 | 338.57 |
+| **8** | 479.66 | 0.3061 | 2.42 | 24.56 | 338.57 |
+| **9** | 465.73 | 0.3272 | 2.41 | 27.04 | 338.58 |
+| **10** | 455.29 | 0.3376 | 2.40 | 29.51 | 338.58 |
+
+This baseline experiment demonstrates feasibility as the unoptimised and low-capacity VAE achived a validation SSIM greater than 0.33 using very low computational resources. The 10-epoch run required less than 340MB of peak VRAM and finished under 30 seconds. The 30 seconds included both training the VAE and tracking of resources. Although the loss and SSIM plateau towards the later epochs, this stagnation is a result of architectural limits of the VAE using only using 2 layers for encoder and decoder and 16 latent variables.
+
+### Risks, Budget & Fallback
+What am I even supposed to write here? what are the risks? how do i even know the computing budget? what does next planned experiment mean as im just planning to write the vq-vae and try to get the ssim > 0.6? whats the workable fallback? my vae except i add more layers and allow more latent variables and etc?
+Key technical risks:
+
 ## Artificial Intelligence Usage Disclosure
 Tools used:
 - Google Gemini
 
 Tasks AI assisted with:
 1. Got the functions and their specifics (such as what is actually tracked and units) needed to measure peak VRAM because I could not find any documentation via googling. Verified by reading the documentation and testing the functions.
+1. Formatting my data to give the table under Preliminary Feasibility Evidence. Verified by simply viewing the output
 
 ## References
 [1] https://arxiv.org/pdf/1711.00937
