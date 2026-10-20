@@ -5,12 +5,14 @@
 This project involves the generation of synthetic HipMRI medical cohorts. These generated HipMRI cohorts will be used for data augmentation and anonymised sharing. The objective is to generate authentic physiological tissue boundaries and structures while abiding by the stringent patient data privacy laws.
 
 ### User Need, Scope & Acceptance Criteria
-Synthesizing medical cohorts that preserve authentic HipMRI scans while adhering to patient confidentiality law, such as HIPAA and GDPR, expands research possibilities beyond scare clinical datasets. If successful, researchers can freely train and share models without risking patient confidentiality and the amount of data would dramatically increase.
+Synthesising medical cohorts that preserve authentic HipMRI scans while adhering to patient confidentiality law, such as HIPAA and GDPR, expands research possibilities beyond scare clinical datasets. If successful, researchers can freely train and share models without risking patient confidentiality and the amount of data would dramatically increase.
 
 Testable acceptance criteria:
-1. Structural similarity index measure (SSIM) > 0.6
-1. other testable criteria? do i need to justify?
-1. what operational/resource constraint? do i need to justify this as well?
+1. Structural similarity index measure (SSIM) > 0.6 - measures strucutral slimilarity rather than just raw pixel differences
+1. Max SSIM < 0.85 between synthesised and real scans - checks for memorisation of scans to avoid collapse into limited modes and voilation of privacy laws
+1. Code utilisation > 0.6 measured with codebook perpexity - checks for codebook collapse where only some codebook vectors are used
+1. Synthesising 32 (batch) images < 50ms on NVIDIA GeForce RTX 3090 - checks if inference in a reasonably short amount of time for deployment
+1. Peak training VRAM of < 500MB - checks if VRAM used is resonable for deployment
 
 ### Model Choice & Course Concepts
 The proposed dataset is HipMRI 2D sliced data which are split into train, test and validation data. Each patient can only be in one of these 3 splits. If necessary, input slices can be padded with 0s. This may be desired because the data has a mix of 1 x 256 x 144 and 1 x 256 x 128 dimension slices. However, the proposed dataset will just dicard the slices of dimensions 1 x 256 x 144 because there are very few number of such slices.
@@ -21,8 +23,7 @@ Furthermore, discrete representations are a more natural fit to HipMRI scans as 
 
 Additionally, unlike VQ-VAE, VAE adds stochastic noise in every forward pass. This results in large variance which can cause unstable training [1]. Combined with the effective use of the latent space, VQ-VAE models can successfully model high-dimensional data rather than needing to spend computational resources on noise [1].
 
-how much detail in explanation of what vq-vae is in feasibility report?
-what is considered a baseline model? how much effort and time should i be putting into the architecture? what is the computational resource limit on this baseline?
+Due to the discrete representation of the latent space, VQ-VAEs alone are not sufficient to synthesise images. Unlike VAEs, VQ-VAEs cannot just simply sample from a continuous distribution to produce an image. To deal with this, another model is needed to learn the prior probability distribution over the discrete latent space [1]. Since model choices for this generative prior were not covered, I will follow the original VQ-VAE paper and use a PixelCNN [1]. Once the PixelCNN is trained, I can sample a valid configuration of discrete codebook indices from the learnt prior and pass them to the VQ-VAE decoder to synethesis the HipMRI slices.
 
 ### Preliminary Feasibility Evidence
 The dataset consists of slices of HipMRI scans stored in NifTI format which are split into train, test and validation data. Each patient cannot be in more than one of these 3 splits. The train data consists of 11400 scans of shape (256, 128) and 60 of shape (256, 144). The test data contains of 540 scans of shape (256, 128). The test data consists of 660 scans of shape (256, 128). The scans are greyscale so their channel dimensions is 1.
@@ -44,8 +45,25 @@ I ran a VAE with 2 layers for encoder and decoder and 16 latent variables on an 
 This baseline experiment demonstrates feasibility as the unoptimised and low-capacity VAE achived a validation SSIM greater than 0.33 using very low computational resources. The 10-epoch run required less than 340MB of peak VRAM and finished under 30 seconds. The 30 seconds included both training the VAE and tracking of resources. Although the loss and SSIM plateau towards the later epochs, this stagnation is a result of architectural limits of the VAE using only using 2 layers for encoder and decoder and 16 latent variables.
 
 ### Risks, Budget & Fallback
-What am I even supposed to write here? what are the risks? how do i even know the computing budget? what does next planned experiment mean as im just planning to write the vq-vae and try to get the ssim > 0.6? whats the workable fallback? my vae except i add more layers and allow more latent variables and etc?
-Key technical risks:
+My next planned experiments involves implementing the VQ-VAE and tuning the architecture and hyperparameters to meet the acceptance criteria. This may involve tuning or choosing:
+- Number of layers, channel dimensions, kernel size, stride and padding in encoder and decoder
+- Normalisation of data and batch normalisation
+- Activation function
+- Reconstruction loss
+- Hyperparameter for loss function which scales commitment loss
+- SSIM hyperpameters such as data range, kernel size and standard kernel
+- Number of generated samples against real slices for measuring max SSIM
+- Number of sampling when running inference to check duration
+- Number of embeddings and embedding dimensions of VQ-VAE
+- Use of skip connections
+
+The computing budget will be significantly greater than what is shown in the table under Preliminary Feasbility Evidence as the VAE used was very lightweight. Furthermore, VQ-VAE introduces discrete representation of the latent space and requires another model to synthesise images. For the training of the VQ-VAE, given the increase in epochs running an increased complexity and size of an architecture, convergence is predicted to take around 2 hours with peak VRAM of less than 5GB. For the PixelCNN, the training is fast because the kernel is masked to zero out future tokens as opposed to computing for token n by using the state of token 2. As a result, in addition to training without sequential steps, PixelCNN relies on downsampled discrete index rather than the full image itself. So, the peak VRAM usage will be around less than 2GB with training time taking about 30 minutes.
+
+If the VQ-VAE fails to reach target SSIM due to incapcity of architecture, I will intentionally allow the VQ-VAE to have more capacity to memorise the training data. This can involve strategies such as increasing layers, increasing codebook dimensions and etc.
+
+# notes for self for what im going to write in readme.md
+- when explaining vqvae need to highlight key things such as discrete  latent variables
+- baseline model (vae) should be the baseline model used in the paper instead of doing my original idea of matching architecture of vqvae for comparison and then what the vqvae provides that vae doesnt
 
 ## Artificial Intelligence Usage Disclosure
 Tools used:
@@ -53,7 +71,10 @@ Tools used:
 
 Tasks AI assisted with:
 1. Got the functions and their specifics (such as what is actually tracked and units) needed to measure peak VRAM because I could not find any documentation via googling. Verified by reading the documentation and testing the functions.
-1. Formatting my data to give the table under Preliminary Feasibility Evidence. Verified by simply viewing the output
+1. Formatting my data to give the table under Preliminary Feasibility Evidence. Verified by simply viewing the output.
+1. Got a list of ideas for testable acceptance criteria. I didn't just ask AI for list I gave it ideas for what to measure and then went through all criteria to pick based on my mine evaluation. Evaulated of recommended thresholds were reasonable by testing against code.
+1. Explained to me how PixelCNN works. I did not directly use anything from the AI so no validation of code or text is needed.
+1. AI gave me projected time and peak VRAM for project. What I ultimately wrote in the feasbility report was using my own thoughts and evaluating the AI's reasoning for the projected numbers.
 
 ## References
 [1] https://arxiv.org/pdf/1711.00937
