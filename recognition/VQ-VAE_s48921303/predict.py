@@ -6,6 +6,7 @@ import os
 from torch.utils.data import DataLoader
 from torchvision.utils import save_image
 from datetime import datetime
+from torchmetrics.image import StructuralSimilarityIndexMeasure
 
 
 def get_device():
@@ -29,7 +30,7 @@ def load_model(args, device):
     if args.model == 'vae':
         model = modules.VAE().to(device)
     elif args.model == 'vq-vae':
-        model = modules.VAE().to(device)
+        model = modules.VQVAE().to(device)
     else:
         raise ValueError("--model argument must either be 'vae' or 'vq-vae'")
         
@@ -41,8 +42,9 @@ def load_model(args, device):
 def eval_model(model, test_loader, device, samples=8):
     model.eval()
     os.makedirs('eval', exist_ok=True)
-    path = 'eval/' + datetime.now().strftime('%T_%d-%m-%y')
+    path = 'eval/' + datetime.now().strftime('%H-%M-%S_%d-%m-%y')
     os.makedirs(path, exist_ok=True)
+    ssim = StructuralSimilarityIndexMeasure(data_range=1.0).to(device)
     
     with torch.no_grad():
         images = next(iter(test_loader))[:samples].to(device)
@@ -50,9 +52,12 @@ def eval_model(model, test_loader, device, samples=8):
         pred, _, _ = model(images)
         cmp = torch.cat([images, pred])
         save_image(cmp, path + '/recon.png', nrow=samples)
+        print("Average SSIM is", ssim(pred, images).item())
     
-        generated = model.sample(samples, device)
-        save_image(generated, path + '/generated.png', nrow=samples)
+        # generated = model.sample(samples, device)
+        # save_image(generated, path + '/generated.png', nrow=samples)
+
+    print('Saved in', path, 'directory')
 
 
 def main(args):

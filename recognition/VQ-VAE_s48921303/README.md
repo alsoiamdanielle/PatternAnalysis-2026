@@ -9,7 +9,7 @@ Synthesising medical cohorts that preserve authentic HipMRI scans while adhering
 
 Testable acceptance criteria:
 1. Structural similarity index measure (SSIM) > 0.6 - measures strucutral slimilarity rather than just raw pixel differences
-1. Max SSIM < 0.85 between synthesised and real scans - checks for memorisation of scans to avoid collapse into limited modes and voilation of privacy laws
+1. 15 < Fréchet Inception Distance (FID) < 50 - measures distribution fidelity and is bounded to balance generation of authentic images against training set memorisation, ensuring plausible feature distributions without violation of privacy laws.
 1. Code utilisation > 0.6 measured with codebook perpexity - checks for codebook collapse where only some codebook vectors are used
 1. Synthesising 32 (batch) images < 50ms on NVIDIA GeForce RTX 3090 - checks if inference in a reasonably short amount of time for deployment
 1. Peak training VRAM of < 500MB - checks if VRAM used is resonable for deployment
@@ -57,13 +57,13 @@ My next planned experiments involves implementing the VQ-VAE and tuning the arch
 - Number of embeddings and embedding dimensions of VQ-VAE
 - Use of skip connections
 
-The computing budget will be significantly greater than what is shown in the table under Preliminary Feasbility Evidence as the VAE used was very lightweight. Furthermore, VQ-VAE introduces discrete representation of the latent space and requires another model to synthesise images. For the training of the VQ-VAE, given the increase in epochs running an increased complexity and size of an architecture, convergence is predicted to take around 2 hours with peak VRAM of less than 5GB. For the PixelCNN, the training is fast because the kernel is masked to zero out future tokens as opposed to computing for token n by using the state of token 2. As a result, in addition to training without sequential steps, PixelCNN relies on downsampled discrete index rather than the full image itself. So, the peak VRAM usage will be around less than 2GB with training time taking about 30 minutes.
+The computing budget will be significantly greater than what is shown in the table under Preliminary Feasbility Evidence as the VAE used was very lightweight. Furthermore, VQ-VAE introduces discrete representation of the latent space and requires another model to synthesise images. For the training of the VQ-VAE, given the increase in epochs running an increased complexity and size of an architecture, convergence is predicted to take around 2 hours with peak VRAM of less than 5GB. For the PixelCNN, the training is fast because the kernel is masked to zero out future tokens as opposed to computing for token n by using the state of token 2 [2]. As a result, in addition to training without sequential steps, PixelCNN relies on downsampled discrete index rather than the full image itself. So, the peak VRAM usage will be around less than 2GB with training time taking about 30 minutes.
 
 If the VQ-VAE fails to reach target SSIM due to incapcity of architecture, I will intentionally allow the VQ-VAE to have more capacity to memorise the training data. This can involve strategies such as increasing layers, increasing codebook dimensions and etc.
 
 # notes for self for what im going to write in readme.md
 - when explaining vqvae need to highlight key things such as discrete  latent variables
-- baseline model (vae) should be the baseline model used in the paper instead of doing my original idea of matching architecture of vqvae for comparison and then what the vqvae provides that vae doesnt
+- baseline model (vae) should be  matching architecture of vqvae for comparison and then what the vqvae provides that vae doesnt rather than just using baseline in paper
 
 ## Artificial Intelligence Usage Disclosure
 Tools used:
@@ -77,4 +77,5 @@ Tasks AI assisted with:
 1. AI gave me projected time and peak VRAM for project. What I ultimately wrote in the feasbility report was using my own thoughts and evaluating the AI's reasoning for the projected numbers.
 
 ## References
-[1] https://arxiv.org/pdf/1711.00937
+[1] https://arxiv.org/pdf/1711.00937 - vqvae
+[2] https://arxiv.org/pdf/1606.05328 - pixelcnn
