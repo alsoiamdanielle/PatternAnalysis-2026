@@ -1,9 +1,9 @@
 # VQ-VAE for Generating Privacy-Preserving Synthetic HipMRI cohorts
 
-## Feasibility Review
-### Project Description
+## Project Description
 This project involves the generation of synthetic HipMRI medical cohorts. These generated HipMRI cohorts will be used for data augmentation and anonymised sharing. The objective is to generate authentic physiological tissue boundaries and structures while abiding by the stringent patient data privacy laws.
 
+## Feasibility Review
 ### User Need, Scope & Acceptance Criteria
 Synthesising medical cohorts that preserve authentic HipMRI scans while adhering to patient confidentiality law, such as HIPAA and GDPR, expands research possibilities beyond scare clinical datasets. If successful, researchers can freely train and share models without risking patient confidentiality and the amount of data would dramatically increase.
 
@@ -75,6 +75,7 @@ Tasks AI assisted with:
 1. Got a list of ideas for testable acceptance criteria. I didn't just ask AI for list I gave it ideas for what to measure and then went through all criteria to pick based on my mine evaluation. Evaulated of recommended thresholds were reasonable by testing against code.
 1. Explained to me how PixelCNN works. I did not directly use anything from the AI so no validation of code or text is needed.
 1. AI gave me projected time and peak VRAM for project. What I ultimately wrote in the feasbility report was using my own thoughts and evaluating the AI's reasoning for the projected numbers.
+1. AI assisted in the implementation for PixelCNN. I didn't just blindly copy in code, rather I consulted AI about the implementation. This way, I decided what to include and change based on such consultations by evaluating what the AI had to say.
 
 ## References
 [1] https://arxiv.org/pdf/1711.00937 - vqvae

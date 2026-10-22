@@ -26,45 +26,91 @@ def load_data():
     return DataLoader(data, batch_size=32, shuffle=True)
 
 
-def load_model(args, device):
-    if args.model == 'vae':
-        model = modules.VAE().to(device)
-    elif args.model == 'vq-vae':
-        model = modules.VQVAE().to(device)
-    else:
-        raise ValueError("--model argument must either be 'vae' or 'vq-vae'")
-        
-    weights = torch.load(args.path, weights_only=True)
-    model.load_state_dict(weights)
-    return model
+def load_vae(args, device):
+    vae = modules.VAE().to(device)
+    weights = torch.load(os.path.join(args.path, 'VAE.pth'), weights_only=True)
+    vae.load_state_dict(weights)
+    return vae
+    
+    
+def load_vqvae(args, device):
+    vae = modules.VQVAE().to(device)
+    weights = torch.load(os.path.join(args.path, 'VQVAE.pth'), weights_only=True)
+    vae.load_state_dict(weights)
+    return vae
 
     
-def eval_model(model, test_loader, device, samples=8):
-    model.eval()
+def load_pixelcnn(args, device):
+    vae = modules.PixelCNN().to(device)
+    weights = torch.load(os.path.join(args.path, 'pixelCNN.pth'), weights_only=True)
+    vae.load_state_dict(weights)
+    return vae
+
+    
+def vae_recon_gen(vae, test_loader, device, samples=8):
+    vae.eval()
     os.makedirs('eval', exist_ok=True)
-    path = 'eval/' + datetime.now().strftime('%H-%M-%S_%d-%m-%y')
+    path = os.path.join('eval', datetime.now().strftime('%H-%M-%S_%d-%m-%y'))
     os.makedirs(path, exist_ok=True)
     ssim = StructuralSimilarityIndexMeasure(data_range=1.0).to(device)
     
     with torch.no_grad():
         images = next(iter(test_loader))[:samples].to(device)
     
-        pred, _, _ = model(images)
+        pred, _, _ = vae(images)
         cmp = torch.cat([images, pred])
-        save_image(cmp, path + '/recon.png', nrow=samples)
+        save_image(cmp, os.path.join(path, 'recon.png'), nrow=samples)
         print("Average SSIM is", ssim(pred, images).item())
     
-        # generated = model.sample(samples, device)
-        # save_image(generated, path + '/generated.png', nrow=samples)
+        generated = vae.sample(samples, device)
+        save_image(generated, os.path.join(path, 'generated.png'), nrow=samples)
 
-    print('Saved in', path, 'directory')
+    print('Reconstructed and generated images saved in', path, 'directory')
+
+
+def vqvae_recon_gen(vqvae, pixelcnn, test_loader, device, samples=8):
+    vqvae.eval()
+    pixelcnn.eval()
+    os.makedirs('eval', exist_ok=True)
+    path = os.path.join('eval', datetime.now().strftime('%H-%M-%S_%d-%m-%y'))
+    os.makedirs(path, exist_ok=True)
+    ssim = StructuralSimilarityIndexMeasure(data_range=1.0).to(device)
+    
+    with torch.no_grad():
+        images = next(iter(test_loader))[:samples].to(device)
+    
+        pred, _, _ = vqvae(images)
+        cmp = torch.cat([images, pred])
+        save_image(cmp, os.path.join(path, 'recon.png'), nrow=samples)
+        print("Average SSIM is", ssim(pred, images).item())
+    
+        generated = pixelcnn.sample(vqvae, samples, device)
+        save_image(generated, os.path.join(path, 'generated.png'), nrow=samples)
+
+    print('Reconstructed and generated images saved in', path, 'directory')
+
+
+def eval_vae(args, test_loader, device):
+    vae = load_vae(args,  device)
+    vae_recon_gen(vae, test_loader, device)
+    
+    
+def eval_vqvae(args, test_loader, device):
+    vqvae = load_vqvae(args,  device)
+    pixelcnn = load_pixelcnn(args,  device)
+    vqvae_recon_gen(vqvae, pixelcnn, test_loader, device)
 
 
 def main(args):
     device = get_device()
     test_loader = load_data()
-    model = load_model(args,  device)
-    eval_model(model, test_loader, device)
+    
+    if args.model == 'vae':
+        eval_vae(args, test_loader, device)
+    elif args.model == 'vqvae':
+        eval_vqvae(args, test_loader, device)
+    else:
+        raise ValueError("--model argument must either be 'vae' or 'vqvae'")
 
 
 if __name__ ==  '__main__':
