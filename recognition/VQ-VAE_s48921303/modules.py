@@ -176,14 +176,22 @@ class MaskedConv2d(nn.Module):
         return F.conv2d(x, self.conv2d.weight * self.mask, self.conv2d.bias, padding=self.conv2d.padding)
 
 
+class GatedMaskedConv2d(nn.Module):
+    def __init__(self, type, in_channels, out_channels, kernel_size=5):
+        super().__init__()
+        self.conv = MaskedConv2d(type, in_channels, out_channels * 2, kernel_size=kernel_size)
+
+    def forward(self, x):
+        h = self.conv(x)
+        filter_feat, gate_feat = torch.chunk(h, 2, dim=1)
+        return torch.tanh(filter_feat) * torch.sigmoid(gate_feat)
+
+
 class MaskedConv2dLayer(nn.Module):
     def __init__(self, type, in_channel, out_channel, kernel_size=5):
         super().__init__()
         self.type = type
-        self.layer = nn.Sequential(
-            MaskedConv2d(type, in_channel, out_channel, kernel_size=kernel_size),
-            nn.ReLU(),
-        )
+        self.layer = GatedMaskedConv2d(type, in_channel, out_channel, kernel_size=kernel_size)
 
     def forward(self, x):
         if self.type == 'A':

@@ -194,6 +194,7 @@ def train_pixelCNN(pixelCNN, vqvae, train_loader, device):
     training_data = TrainingData()
     start = time.time()
     pixelCNN.train()
+    vqvae.eval()
     
     for epoch in range(pixelcnn_epochs):
         running_loss = 0
