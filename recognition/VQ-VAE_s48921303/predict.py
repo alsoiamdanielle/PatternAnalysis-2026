@@ -68,7 +68,7 @@ def init_fid(test_loader, feature, device):
     
 
 def init_kid(test_loader, device):
-    kid = KernelInceptionDistance(subset_size=len(test_loader.dataset)).to(device)
+    kid = KernelInceptionDistance(subset_size=50).to(device)
     
     for images in test_loader:
         images = images.to(device)

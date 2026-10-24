@@ -1,7 +1,7 @@
 # VQ-VAE for Generating Privacy-Preserving Synthetic HipMRI cohorts
 
 ## Project Description
-This project involves the generation of synthetic HipMRI medical cohorts. These generated HipMRI cohorts will be used for data augmentation and anonymised sharing. The objective is to generate authentic physiological tissue boundaries and structures while abiding by the stringent patient data privacy laws.
+In this project, I aim to address the challenges of clinical data scarcity and stringent patient privacy laws by using a Vector Quantised Variational Autoencoder (VQ-VAE) to synthesise realistic 2D hip MRI cohorts. Due to strict patient confidentiality laws, medical imaging is frequently restricted from open research, leading to limited clinical datasets. This constrains the development of robust models and clinical assessment tools. To overcome these limitations, I develop a generative modelling pipeline pairing a VQ-VAE with a Gated PixelCNN prior, benchmarked against a baseline Variational Autoencoder (VAE). The primary objective is to evaluate whether discrete representation learning can faithfully capture authentic physiological tissue boundaries and anatomical structures in hip MRI scans. By producing such realistic MRI cohorts that preserve patient privacy, I aim to expand scarce medical imaging datasets and facilitate data augmentation for downstream research.
 
 ## Feasibility Review
 ### User Need, Scope & Acceptance Criteria
@@ -78,7 +78,9 @@ Tasks AI assisted with:
 1. AI assisted in the implementation for PixelCNN. I didn't just blindly copy in code, rather I consulted AI about the implementation. This way, I decided what to include and change based on such consultations by evaluating what the AI had to say.
 1. AI assisted in adjusting pixelCNN architecture and hyperparameters for generation. Again, as the point above, I didn't just blindly copy code.
 1. AI assisted in implementing measurements of distribution fidelity (FID and KID). Again, as the point above, I didn't just blindly copy code.
+1. AI assisted with wording of certain ideas I had for writing documentation in README. I always read what AI came up with and then adapted it to my liking without blinding copy and pasting.
 
 ## References
 [1] https://arxiv.org/pdf/1711.00937 - vqvae
+
 [2] https://arxiv.org/pdf/1606.05328 - pixelcnn
