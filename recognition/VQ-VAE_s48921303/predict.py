@@ -47,7 +47,7 @@ def load_pixelcnn(args, device):
     return vae
 
     
-def vae_recon_gen(vae, test_loader, device, samples=8):
+def vae_recon_gen(vae, test_loader, device, samples=12):
     vae.eval()
     os.makedirs('eval', exist_ok=True)
     path = os.path.join('eval', datetime.now().strftime('%H-%M-%S_%d-%m-%y'))

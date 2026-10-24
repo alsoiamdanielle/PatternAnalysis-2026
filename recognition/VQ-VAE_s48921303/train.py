@@ -15,7 +15,7 @@ import argparse
 
 vae_epochs = 30
 vqvae_epochs = 30
-pixelcnn_epochs = 30
+pixelcnn_epochs = 40
 
 
 class TrainingData():
@@ -126,7 +126,7 @@ def train_vae(vae, train_loader, val_loader, device):
         print(f'Epoch {epoch + 1}:')
         print(f'Average loss is {running_loss / len(train_loader)}')
         print(f'Elapsed time for epoch is {epoch_time} seconds')
-        print(f'Total elapsed time is {time.time() - start} seconds')
+        print(f'Total elapsed time (for vae) is {time.time() - start} seconds')
         print(f'SSIM is {ssim}')
         print(f'Peak VRAM is {peak_vram_mb} MB')
 
@@ -181,7 +181,7 @@ def train_vqvae(vqvae, train_loader, val_loader, device):
         print(f'Epoch {epoch + 1}:')
         print(f'Average loss is {running_loss / len(train_loader)}')
         print(f'Elapsed time for epoch is {epoch_time} seconds')
-        print(f'Total elapsed time is {time.time() - start} seconds')
+        print(f'Total elapsed time (for VQ-VAE) is {time.time() - start} seconds')
         print(f'SSIM is {ssim}')
         print(f'Peak VRAM is {peak_vram_mb} MB')
 
@@ -238,7 +238,7 @@ def train_pixelCNN(pixelCNN, vqvae, train_loader, device):
         print(f'Epoch {epoch + 1}:')
         print(f'Average loss is {running_loss / len(train_loader)}')
         print(f'Elapsed time for epoch is {epoch_time} seconds')
-        print(f'Total elapsed time is {time.time() - start} seconds')
+        print(f'Total elapsed time (for PixelCNN) is {time.time() - start} seconds')
         print(f'Peak VRAM is {peak_vram_mb} MB')
 
     return training_data

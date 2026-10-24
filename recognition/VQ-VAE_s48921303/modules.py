@@ -177,40 +177,55 @@ class MaskedConv2d(nn.Module):
 
 
 class MaskedConv2dLayer(nn.Module):
-    def __init__(self, type, hidden_dim, kernel_size=5):
+    def __init__(self, type, in_channel, out_channel, kernel_size=5):
         super().__init__()
+        self.type = type
         self.layer = nn.Sequential(
-            MaskedConv2d(type, hidden_dim, hidden_dim, kernel_size=kernel_size),
+            MaskedConv2d(type, in_channel, out_channel, kernel_size=kernel_size),
             nn.ReLU(),
         )
 
     def forward(self, x):
-        return self.layer(x)
+        if self.type == 'A':
+            return self.layer(x)
+        else:
+            return x + self.layer(x)
 
 
 class PixelCNN(nn.Module):
-    def __init__(self, num_embeddings=128, hidden_dim=64, B_layers=10):
+    def __init__(self, num_embeddings=128, hidden_dim=128, B_layers=10, latent_h=64, latent_w=32):
         super().__init__()
         self.num_embeddings = num_embeddings
         self.hidden_dim = hidden_dim
+        self.latent_h = latent_h
+        self.latent_w = latent_w
         
         self.embedding = nn.Embedding(num_embeddings, hidden_dim)
         self.net = nn.Sequential(
-            MaskedConv2dLayer('A', hidden_dim),
-            *[MaskedConv2dLayer('B', hidden_dim) for _ in range(B_layers)]
+            MaskedConv2dLayer('A', hidden_dim + 2, hidden_dim, kernel_size=7),
+            *[MaskedConv2dLayer('B', hidden_dim, hidden_dim, kernel_size=7) for _ in range(B_layers)]
         )
         self.out_conv = nn.Conv2d(hidden_dim, num_embeddings, kernel_size=1)
 
     def forward(self, x):
         embeddings = self.embedding(x.long()).permute(0, 3, 1, 2).contiguous()
-        features = self.net(embeddings)
+        
+        b, h, w = x.shape
+        y = torch.linspace(-1, 1, h, device=x.device).view(1, 1, h, 1).expand(b, 1, h, w)
+        c = torch.linspace(-1, 1, w, device=x.device).view(1, 1, 1, w).expand(b, 1, h, w)
+        coords = torch.cat([embeddings, y, c], dim=1)
+        
+        features = self.net(coords)
         return self.out_conv(features)
         
     def sample(self, vqvae, samples, device, temperature=0.9):
+        self.eval()
+        vqvae.eval()
+        
         with torch.no_grad():
-            tokens = torch.zeros(samples, self.num_embeddings, self.hidden_dim, device=device, dtype=torch.long)
-            for r in range(self.num_embeddings):
-                for c in range(self.hidden_dim):
+            tokens = torch.zeros(samples, self.latent_h, self.latent_w, device=device, dtype=torch.long)
+            for r in range(self.latent_h):
+                for c in range(self.latent_w):
                     logits = self.forward(tokens)
                     logits_rc = logits[:, :, r, c]
                     
