@@ -1,49 +1,55 @@
-# VQ-VAE for Generating Privacy-Preserving Synthetic HipMRI cohorts
+# notes for self for what im going to write in readme.md
+- when explaining vqvae need to highlight key things such as discrete  latent variables
+- baseline model (vae) should be  matching architecture of vqvae for comparison and then what the vqvae provides that vae doesnt rather than just using baseline in paper
+
+# VQ-VAE for Generating Privacy-Preserving Synthetic Hip MRI Cohorts
 
 ## Project Description
-In this project, I aim to address the challenges of clinical data scarcity and stringent patient privacy laws by using a Vector Quantised Variational Autoencoder (VQ-VAE) to synthesise realistic 2D hip MRI cohorts. Due to strict patient confidentiality laws, medical imaging is frequently restricted from open research, leading to limited clinical datasets. This constrains the development of robust models and clinical assessment tools. To overcome these limitations, I develop a generative modelling pipeline pairing a VQ-VAE with a Gated PixelCNN prior, benchmarked against a baseline Variational Autoencoder (VAE). The primary objective is to evaluate whether discrete representation learning can faithfully capture authentic physiological tissue boundaries and anatomical structures in hip MRI scans. By producing such realistic MRI cohorts that preserve patient privacy, I aim to expand scarce medical imaging datasets and facilitate data augmentation for downstream research.
+In this project, I aim to address the challenges of clinical data scarcity and stringent patient privacy laws by using a Vector Quantised Variational Autoencoder (VQ-VAE) to synthesise realistic 2D hip MRI cohorts. Due to strict patient confidentiality laws, medical imaging is frequently restricted from open research, leading to limited clinical datasets. This constrains the development of robust models and clinical assessment tools. To overcome these limitations, I developed a generative modelling pipeline pairing a VQ-VAE with a Gated PixelCNN prior, benchmarked against a baseline Variational Autoencoder (VAE). The primary objective is to evaluate whether discrete representation learning can faithfully capture authentic physiological tissue boundaries and anatomical structures in hip MRI scans. By generatingr realistic such realistic MRI cohorts that preserve patient privacy, I aim to expand scarce medical imaging datasets and facilitate data augmentation for downstream research.
 
-## Overview
+## Models
 ### VQ-VAE
-A VQ-VAE is a type of autoencoder that maps high-dimensional data into a discrete latent space. The model first compresses the input through an encoder into continuous spatial feature maps. Then, these features are quantised by mapping each vector to its nearest neighbor in a learned discrete codebook before reconstructing by passing these quantised features into a decoder. This structure is shown on the left in Figure 1 for an image. The output of the encoder $z_e(x)$ is mapped to the nearest point $e_i$ for some $1 \le i \le k$. The right of Figure 1 shows the embedding space for the codebook. In this space, each continuous vector $z_e(x)$ is assigned a discrete codebook vector $e_i$ that minimises the Euclidean distance.
+A VQ-VAE is a type of autoencoder that maps high-dimensional data into a discrete latent space. The model first compresses the input through an encoder into continuous spatial feature maps. Then, these features are quantised by mapping each vector to its nearest neighbour in a learned discrete codebook before a decoder reconstructs the input from these quantised features. This structure is shown on the left in Figure 1 for an image. The output of the encoder $z_e(x)$ is mapped to the nearest point $e_i$ for some $1 \le i \le k$. The right of Figure 1 shows the embedding space for the codebook, showing the assignment of $z_e(x)$ to $e_i$ that minimises the Euclidean distance.
+
 ![Figure 1: Architecture of the VQ-VAE [1]](README_images/VQ_VAE_Architecture.png)
+Figure 1: Architecture of the VQ-VAE [1]
 
 The fundamental difference between a VQ-VAE and a VAE is this latent space. The VAE's continuous Gaussian sampling is replaced with this deterministic vector quantisation step. This largely mitigates the posterior collapse that often occurs with VAEs as the model is not forced into an often uninformative Gaussian prior [1]. Furthermore, the discrete representation of the latent space means there is no continuous blending which would produce impossible interpolation artifacts. This is extremely important for the generation of hip MRI scans as valid anatomical structures are discrete and intermediate states between them do not exist in reality.
 
 ### PixelCNN
-Because the VQ-VAE only compresses input into a discrete grid of codebook indices, an autoregressive model is required to learn the distribution over these latent tokens to synthesise new data. Following the original paper [1], I use a PixelCNN to model this prior.
+Because the VQ-VAE only compresses the input into a discrete grid of codebook indices, an autoregressive model is required to learn the distribution over these latent tokens to synthesise new data. Following the original paper [1], I use a PixelCNN to model this prior.
 
-A PixelCNN is an autoregressive model that breaks down the joint probability of an image into a product of conditional probabilities [2]. The probability of an element is conditioned on all the previously generated elements, as visualised on the left of Figure 2. In training, this is achieved by masking a convolutional kernel to prevent future spatial information from leaking into the current predition as shown in the centre of Figure 2. However, this masking creates the blind spot seen in the top right of Figure 2. Because the mask zeroes out all weights to the right of the centre pixel at every layer, information can never propagate rightward through intermediate layers, creating this blind spot.
+A PixelCNN is an autoregressive model that facotorises the joint probability of an image into a product of conditional probabilities [2]. The probability of an element is conditioned on all the previously generated elements, as visualised on the left of Figure 2. In training, this is achieved by masking a convolutional kernel to prevent future spatial information from leaking into the current prediction as shown in the centre of Figure 2. However, this masking creates the blind spot seen in the top right of Figure 2. Because the mask zeroes out all weights to the right of the centre pixel at every layer, information can never propagate rightward through intermediate layers, creating this blind spot.
 
-To resolve this, Gated PixelCNN splits the architecture into an vertical stack which conditions on all rows above and a horizontal stack which conditions only on the previous pixels in the current row [2]. This eliminates the blind spot without leaking future spatial information as shown in the bottom right of Figure 2 [2].
+To resolve this, Gated PixelCNN splits the architecture into a vertical stack which conditions on all rows above and a horizontal stack which conditions only on the previous pixels in the current row. This eliminates the blind spot without leaking future spatial information as shown in the bottom right of Figure 2 [2].
+
 ![Figure 2: Architecture of the PixelCNN [2]](README_images/PixelCNN_Architecture.png)
+Figure 2: Architecture of the PixelCNN [2]
 
 ## Feasibility Review
 ### User Need, Scope & Acceptance Criteria
-Synthesising medical cohorts that preserve authentic HipMRI scans while adhering to patient confidentiality law, such as HIPAA and GDPR, expands research possibilities beyond scare clinical datasets. If successful, researchers can freely train and share models without risking patient confidentiality and the amount of data would dramatically increase.
+Synthesising medical cohorts that preserve authentic Hip MRI scans while adhering to patient confidentiality laws, such as HIPAA and GDPR, expands clinical research opportunities beyond scarce medical datasets. By generating realistic synthetic scans, researchers can openly train and distribute diagnostic models without compromising patient privacy, significantly increasing these scarce datasets.
 
 Testable acceptance criteria:
-1. Structural similarity index measure (SSIM) > 0.6 - measures strucutral slimilarity rather than just raw pixel differences
-1. 15 < Fréchet Inception Distance (FID) < 50 - measures distribution fidelity and is bounded to balance generation of authentic images against training set memorisation, ensuring plausible feature distributions without violation of privacy laws.
-1. Code utilisation > 0.6 measured with codebook perpexity - checks for codebook collapse where only some codebook vectors are used
-1. Synthesising 32 (batch) images < 50ms on NVIDIA GeForce RTX 3090 - checks if inference in a reasonably short amount of time for deployment
-1. Peak training VRAM of < 500MB - checks if VRAM used is resonable for deployment
+1. Structural similarity index measure (SSIM) > 0.6: Measures structural fidelity rather than relying only on raw pixel differences.
+1. 15 < Fréchet Inception Distance (FID) < 50: Measures distribution fidelity and is bounded to balance the generation of authentic images against training set memorisation to ensure plausible feature distributions without violating privacy laws.
+1. Codebook utilisation > 0.6 (normalised codebook perplexity): Checks for codebook collapse to ensure that the majority of available discrete embedding vectors are contributing to the representations.
+1. Batch inference latency < 50 ms (Batch Size = 32): Checks that synthetic batch sampling on an NVIDIA GeForce RTX 3090 executes quickly enough for deployment.
+1. Peak training VRAM < 500 MB: Checks if the model maintains a light peak inference VRAM.
 
 ### Model Choice & Course Concepts
-The proposed dataset is HipMRI 2D sliced data which are split into train, test and validation data. Each patient can only be in one of these 3 splits. If necessary, input slices can be padded with 0s. This may be desired because the data has a mix of 1 x 256 x 144 and 1 x 256 x 128 dimension slices. However, the proposed dataset will just dicard the slices of dimensions 1 x 256 x 144 because there are very few number of such slices.
+The target dataset consists of 2D slices from Hip MRI scans, split into training, validation, and testing subsets. Slices are split at the patient level so that no patient appears in more than one split, preventing data leakage. The raw scans contain a mix of $1 \times 256 \times 144$ and $1 \times 256 \times 128$ slices with only 60 out of the 12 600 slices having dimensions of $1 \times 256 \times 144$. The proposed dataset configuration involves discarding these 60 slices to avoid introducing zero-padding artifacts.
 
-The proposed model architecture is the VQ-VAE (hard difficulty). VQ-VAE is an autoencoder that uses a discrete representation of latent space rather than continous space used in VAE [1]. By doing so, VQ-VAE avoids posterior collapse that VAE often suffers from due to powerful decoders that can ignore latent variables. Increasing latent space to avoid posterior collapse is difficult as all possible sample points have to generate valid images. VQ-VAE avoids this problem by freely mapping discrete latent codes so it is not forced to match its latent representation to a predefined continuous prior. 
+The proposed model architecture is the VQ-VAE (hard difficulty). The VQ-VAE replaces the continuous latent space of standard VAEs with a learned, discrete codebook. This deterministic vector quantisation step mitigates posterior collapse, an issue common to VAEs when powerful decoders learn to ignore continuous latent variables. While mitigating collapse in VAEs by expanding continuous latent dimensions requires ensuring every sampled point maps to a valid output, VQ-VAEs avoid this by mapping directly to discrete codes without being bound to a static Gaussian prior [1].
 
-Furthermore, discrete representations are a more natural fit to HipMRI scans as these scans are composed of sharp distinct bones and tissue [1]. It does not make sense anatomically to have intermediate states between HipMRI scans that a VAE would have which arises from the continous representation of latent space.
+Furthermore, discrete representations provide a natural fit for Hip MRI data as these scans consist of distinct anatomical structures [1]. Anatomically, intermediate interpolations do not exist in reality. Continuous latent spaces blend these boundaries into non-physical artifacts. Additionally, VAEs inject stochastic sampling noise during every forward pass, potentially causing training instability [1]. By removing this continuous noise injection, the VQ-VAE dedicates its capacity entirely to encoding spatial features [1].
 
-Additionally, unlike VQ-VAE, VAE adds stochastic noise in every forward pass. This results in large variance which can cause unstable training [1]. Combined with the effective use of the latent space, VQ-VAE models can successfully model high-dimensional data rather than needing to spend computational resources on noise [1].
-
-Due to the discrete representation of the latent space, VQ-VAEs alone are not sufficient to synthesise images. Unlike VAEs, VQ-VAEs cannot just simply sample from a continuous distribution to produce an image. To deal with this, another model is needed to learn the prior probability distribution over the discrete latent space [1]. Since model choices for this generative prior were not covered, I will follow the original VQ-VAE paper and use a PixelCNN [1]. Once the PixelCNN is trained, I can sample a valid configuration of discrete codebook indices from the learnt prior and pass them to the VQ-VAE decoder to synethesis the HipMRI slices.
+Because a VQ-VAE maps images deterministically to discrete indices, it cannot independently synthesise images via simple random sampling. A second model is required to learn the prior probability distribution over this discrete latent grid [1]. Following the original VQ-VAE architecture, the autoregressive PixelCNN is used as this prior [1]. Once trained, the PixelCNN autoregressively samples configurations of codebook indices, which are then passed to the VQ-VAE's decoder to generate synthetic Hip MRI slices.
 
 ### Preliminary Feasibility Evidence
-The dataset consists of slices of HipMRI scans stored in NifTI format which are split into train, test and validation data. Each patient cannot be in more than one of these 3 splits. The train data consists of 11400 scans of shape (256, 128) and 60 of shape (256, 144). The test data contains of 540 scans of shape (256, 128). The test data consists of 660 scans of shape (256, 128). The scans are greyscale so their channel dimensions is 1.
+The dataset comprises 2D Hip MRI slices stored in NIfTI format, strictly isolated by patient across splits. The training set consists of 11 400 scans of shape $(256, 128)$ and 60 scans of shape $(256, 144)$ (to be discarded). The validation set consists of 540 scans of shape $(256, 128)$, and the test set consists of 660 scans of shape $(256, 128)$. All scans are greyscale, resulting in a single channel dimensions.
 
-I ran a VAE with 2 layers for encoder and decoder and 16 latent variables on an NVIDIA GeForce RTX 3090 as the baseline smoke-test experiment. Here is the data:
+I ran a lightweight VAE with 2 convolutional layers each for the encoder and decoder with 16 latent variables on an NVIDIA GeForce RTX 3090 as the baseline smoke-test experiment:
 | Epoch | Loss (MSE + KL) | Validation SSIM | Epoch Time (s) | Cumulative Time (s) | Peak VRAM (MB) |
 | :---: | :---: | :---: | :---: | :---: | :---: |
 | **1** | 2,638.65 | 0.1419 | 4.68 | 4.89 | 338.56 |
@@ -57,28 +63,49 @@ I ran a VAE with 2 layers for encoder and decoder and 16 latent variables on an 
 | **9** | 465.73 | 0.3272 | 2.41 | 27.04 | 338.58 |
 | **10** | 455.29 | 0.3376 | 2.40 | 29.51 | 338.58 |
 
-This baseline experiment demonstrates feasibility as the unoptimised and low-capacity VAE achived a validation SSIM greater than 0.33 using very low computational resources. The 10-epoch run required less than 340MB of peak VRAM and finished under 30 seconds. The 30 seconds included both training the VAE and tracking of resources. Although the loss and SSIM plateau towards the later epochs, this stagnation is a result of architectural limits of the VAE using only using 2 layers for encoder and decoder and 16 latent variables.
+This baseline confirms computational feasibility as the unoptimised, low-capacity VAE achieved a validation SSIM of 0.3376 while consuming under 340 MB of peak VRAM and completing 10 epochs in under 30 seconds (including logging and resource tracking overhead). While loss and SSIM plateau in later epochs, this stagnation stems directly from the restricted capacity of this VAE.
 
 ### Risks, Budget & Fallback
-My next planned experiments involves implementing the VQ-VAE and tuning the architecture and hyperparameters to meet the acceptance criteria. This may involve tuning or choosing:
-- Number of layers, channel dimensions, kernel size, stride and padding in encoder and decoder
-- Normalisation of data and batch normalisation
-- Activation function
-- Reconstruction loss
-- Hyperparameter for loss function which scales commitment loss
-- SSIM hyperpameters such as data range, kernel size and standard kernel
-- Number of generated samples against real slices for measuring max SSIM
-- Number of sampling when running inference to check duration
-- Number of embeddings and embedding dimensions of VQ-VAE
-- Use of skip connections
+My next planned experiments involve implementing and tuning the full VQ-VAE and PixelCNN pipeline to satisfy the acceptance criteria. Key tuning ideas include:
+- Architecture: Number of layers, channel dimensions, kernel size, stride, padding and use of skip connections
+- Regularisation and activations: normalisation (e.g. BatchNorm) and activation functions
+- Loss: Reconstruction loss, commitment loss hyperparameter
+- Codebook hyperparameters: Number of embeddings and embedding dimensions
+- Evaulation: Data range for SSIM, Inception-v3 feature layer (FID), sample sizes for running inference
 
-The computing budget will be significantly greater than what is shown in the table under Preliminary Feasbility Evidence as the VAE used was very lightweight. Furthermore, VQ-VAE introduces discrete representation of the latent space and requires another model to synthesise images. For the training of the VQ-VAE, given the increase in epochs running an increased complexity and size of an architecture, convergence is predicted to take around 2 hours with peak VRAM of less than 5GB. For the PixelCNN, the training is fast because the kernel is masked to zero out future tokens as opposed to computing for token n by using the state of token 2 [2]. As a result, in addition to training without sequential steps, PixelCNN relies on downsampled discrete index rather than the full image itself. So, the peak VRAM usage will be around less than 2GB with training time taking about 30 minutes.
+The computational budget will significantly exceed the baseline smoke test due to increased architectural capacity and the two-stage training requirement:
+1. VQ-VAE training: Scaling network depth and extending training duration is projected to take around 2 hours with under 5GB of peak VRAM.
+1. PixelCNN training: Training is efficient as masking of the kernel enables parallelism. Furthermore, PixelCNN relies on downsampled discrete latent indices rather than the full image. As a result, training is projected to take around 30 minutes with under 2 GB of peak VRAM.
 
-If the VQ-VAE fails to reach target SSIM due to incapcity of architecture, I will intentionally allow the VQ-VAE to have more capacity to memorise the training data. This can involve strategies such as increasing layers, increasing codebook dimensions and etc.
+If the VQ-VAE fails to reach target SSIM, I will expand the model capacity by scaling network depth, codebook dimensions and latent feature grid. This may come at the cost of allowing memorisation of training data.
 
-# notes for self for what im going to write in readme.md
-- when explaining vqvae need to highlight key things such as discrete  latent variables
-- baseline model (vae) should be  matching architecture of vqvae for comparison and then what the vqvae provides that vae doesnt rather than just using baseline in paper
+## Reproducibility
+### Software Dependencies
+
+### Hardware
+
+### Execution
+
+## Preprocessing
+### Data Preprocessing
+
+### Data Splitting
+
+## Example Inputs, Outputs, and Visual Plots
+### Training Metric Plots
+
+### Input and Reconstruction
+
+### Hip MRI Generation
+
+## Investigation of the Open Research Dilemma
+### Quantitative Benchmarking Against Baseline
+
+### Computational Resource Profiling
+
+### Qualitative Error Autopsies
+
+### Engineering Recommendations and Trade-Off Synthesis
 
 ## Artificial Intelligence Usage Disclosure
 ### Tools Used
