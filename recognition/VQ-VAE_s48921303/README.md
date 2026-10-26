@@ -147,6 +147,18 @@ python train.py --model vqvae --data_dir ./HipMRI --num_embeddings 32 --embeddin
   - Test Set (`keras_slices_test`): 660 slices of shape $256 \times 128$. Reserved for `predict.py` to evaluate test metrics (SSIM, FID, KID), **??**
 
 ## Training
+### Architecture
+- VQ-VAE:
+  - Encoder downsamples input slices via two stride-2 convolutions with ReLU, followed by residual convolutional blocks
+  - Vector Quantiser projects continuous latents to nearest codebook vectors via Euclidean distance with Straight-Through Estimation
+  - Decoder mirrors the encoder using residual blocks and two stride-2 transposed convolutions, ending with a Sigmoid activation
+- Gated PixelCNN Prior:
+  - Employs stacked convolutions split into vertical and horizontal streams to eliminate receptive field blind spots
+  - Utilises gated activation units ($\tanh \odot \sigma$) and residual connections, terminating in a $1 \times 1$ convolution predicting logits over the 32 tokens
+- Baseline VAE:
+  - Uses an identical encoder-decoder convolutional backbone to isolate continuous versus discrete latent behaviour
+  - Replaces quantisation with parallel convolutional heads predicting latent mean ($\mu$) and log-variance ($\log \sigma^2$) via the reparameterisation trick
+
 ### Hyperparameters Used
 #### Training & Optimization Hyperparameters
 - Optimiser: Adam (`torch.optim.Adam`)
