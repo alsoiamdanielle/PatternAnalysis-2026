@@ -52,7 +52,7 @@ The dataset comprises 2D Hip MRI slices stored in NIfTI format, strictly isolate
 I ran a lightweight VAE with 2 convolutional layers each for the encoder and decoder with 16 latent variables on an NVIDIA GeForce RTX 3090 as the baseline smoke-test experiment:
 | Epoch | Loss (MSE + KL) | Validation SSIM | Epoch Time (s) | Cumulative Time (s) | Peak VRAM (MB) |
 | :---: | :---: | :---: | :---: | :---: | :---: |
-| **1** | 2,638.65 | 0.1419 | 4.68 | 4.89 | 338.56 |
+| **1** | 2 638.65 | 0.1419 | 4.68 | 4.89 | 338.56 |
 | **2** | 840.47 | 0.2144 | 2.78 | 7.75 | 338.56 |
 | **3** | 654.57 | 0.2485 | 2.79 | 10.63 | 338.56 |
 | **4** | 578.11 | 0.2685 | 2.77 | 13.48 | 338.56 |
@@ -81,17 +81,104 @@ If the VQ-VAE fails to reach target SSIM, I will expand the model capacity by sc
 
 ## Reproducibility
 ### Software Dependencies
+- Python: 3.12.10
+- PyTorch (torch): 2.14.1
+- Torchvision (torchvision): 0.29.1
+- TorchMetrics (torchmetrics): 1.9.0
+- NiBabel (nibabel): 5.4.2
+- NumPy (numpy): 2.3.4
+- Matplotlib (matplotlib): 3.10.7
 
 ### Hardware
+- GPU: NVIDIA GeForce RTX 3090 with 24 GB GDDR6X VRAM
+- 24 GB of VRAM accommodated full batch training (batch size of 64)
+- GPU memory consumption measured within train.py using PyTorch CUDA runtime APIs.
 
 ### Execution
+Execution involves a two-stage pipeline where `train.py` must be executed first followed by `predict.py`. `train.py` trains the models, tracks validation convergence, and writes the timestamped weights and training curves to disk. `predict.py` loads the saved weights to perform final test evaluation, **??**
+
+#### 1. Model Training (`train.py`)
+
+`train.py` handles data loading with training-only data augmentation, optimiser setup, validation metric tracking, early stopping, and automatic logging of model weights, CSV metrics, and training curves.
+
+##### CLI Arguments for `train.py`
+
+| Argument | Type | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `--model` | `str` | Required | Architecture to train: `'vqvae'` or `'vae'`. |
+| `--data_dir` | `str` | Required | Root directory containing `keras_slices_train` and `keras_slices_validate`. |
+| `--vqvae_epochs` | `int` | `30` | Maximum training epochs for the VQ-VAE model (monitored by early stopping). |
+| `--pixelcnn_epochs`| `int` | `60` | Training epochs for the PixelCNN. |
+| `--vae_epochs` | `int` | `30` | Maximum training epochs for the baseline VAE model. |
+| `--batch_size` | `int` | `64` | Mini-batch size for DataLoader instances. |
+| `--num_embeddings` | `int` | `32` | Codebook dictionary size ($K$) for VQ-VAE and token vocabulary for PixelCNN. |
+| `--embedding_dim` | `int` | `64` | Channel dimensionality ($D$) of codebook vectors and latent feature maps. |
+| `--lr` | `float` | `0.0001` | Learning rate for the Adam optimiser. |
+| `--seed` | `int` | `42` | Random seed for reproducibility. |
+| `--test` | `flag` | `False` | Truncates dataset loading to 20 slices for pipeline smoke-testing. |
+
+##### Example Training Commands
+Train the baseline VAE model:
+```
+python train.py --model vae --data_dir ./HipMRI --embedding_dim 64 --batch_size 64 --vae_epochs 30 --lr 0.0001
+```
+
+Train the VQ-VAE + PixelCNN pipeline:
+```
+python train.py --model vqvae --data_dir ./HipMRI --num_embeddings 32 --embedding_dim 64 --batch_size 64 --vqvae_epochs 30 --pixelcnn_epochs 60 --lr 0.0001
+```
+
+#### 2. Model Evaluation (`predict.py`)
 
 ## Preprocessing
 ### Data Preprocessing
+- Loading Dataset: Hip 2D slices are loaded from NIfTI (`.nii`) using `nibabel`. Any extra singleton or fourth dimensions present are removed so that inputs are all 2D single-channel matrices.
+- Standardisation And Filtering: The dataset consists almost entirely of $256 \times 128$ slices, but contains 60 slices of shape $256 \times 144$ out of the 12,600 total scans. To avoid introducing zero-padding artifacts, boundary distortions, or spatial resizing, these 60 slices are discarded from the training set.
+- Normalisation: To stabilise loss gradients and match the decoder's final `Sigmoid()` activation layer, each slice is scaled to the range $[0.0, 1.0]$ using slice min-max normalisation.
+- Data Augmentation: To improve generalisation while preserving anatomical structures, data augmentations are applied on to the training (`augment=True`):
+  - `RandomHorizontalFlip(p=0.5)`: Horizontal flip 50% of the time
+  - `RandomAffine(degrees=5, translate=(0.02, 0.02))`: Applies slight rotations and translations to simulate slight positioning variations on the MRI scanner.
 
 ### Data Splitting
+- Patient-Level Segregation: Slices are partitioned at the patient level. This ensures slices from the same patient do not appear across multiple splits, preventing data leakage.
+- Splits:
+  - Training Set (`keras_slices_train`): 11,400 slices of shape $256 \times 128$ (after discarding the 60 outlier slices). Used to train the VQ-VAE and PixelCNN.
+  - Validation Set (`keras_slices_validate`): 540 slices of shape $256 \times 128$. Evaluated at the end of each epoch to track validation SSIM and codebook perplexity, using early stopping (`patience=7`) to restore the best model weights.
+  - Test Set (`keras_slices_test`): 660 slices of shape $256 \times 128$. Reserved for `predict.py` to evaluate test metrics (SSIM, FID, KID), **??**
 
-## Example Inputs, Outputs, and Visual Plots
+## Training
+### Hyperparameters Used
+#### Training & Optimization Hyperparameters
+- Optimiser: Adam (`torch.optim.Adam`)
+- Learning Rate (`--lr`): 0.0001 (1e-4)
+- Training Batch Size (`--batch_size`): 64
+- Evaluation Batch Size: 32
+- Random Seed (`--seed`): 42
+- Early Stopping Patience: 7 epochs (monitored on validation SSIM for both VQ-VAE and VAE)
+
+#### Data & Preprocessing Hyperparameters
+- Image Input Dimensions: 256 x 128 x 1 (single-channel greyscale)
+- Intensity Scaling: Per-slice min-max normalisation to [0.0, 1.0]
+- Data Augmentations (Training Only):
+  - Horizontal Flip: `RandomHorizontalFlip(p=0.5)`
+  - Spatial Jitter: `RandomAffine(degrees=5, translate=(0.02, 0.02))`
+
+#### VQ-VAE Hyperparameters
+- Maximum Epochs (`--vqvae_epochs`): 30
+- Codebook Size (K, `--num_embeddings`): 32 embeddings
+- Embedding Dimension (D, `--embedding_dim`): 64 channels
+- Latent Feature Map Resolution: 64 x 32 (downsampled by a spatial factor of 4)
+
+#### Gated PixelCNN Prior Hyperparameters
+- Training Epochs (`--pixelcnn_epochs`): 60
+- Token Vocabulary Size (`num_embeddings`): 32 (matches VQ-VAE codebook size K)
+- Gradient Clipping Norm: max_norm = 1.0
+
+#### Baseline VAE Hyperparameters
+- Maximum Epochs (`--vae_epochs`): 30
+- Latent Channel Dimension (`--embedding_dim`): 64
+- KL Divergence Weight ($\beta$): 1.0 (standard ELBO formulation)
+
 ### Training Metric Plots
 
 ### Input and Reconstruction
