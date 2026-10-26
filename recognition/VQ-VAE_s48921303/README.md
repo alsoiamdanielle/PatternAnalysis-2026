@@ -181,31 +181,37 @@ python train.py --model vqvae --data_dir ./HipMRI --num_embeddings 32 --embeddin
 
 ### Training Metric Plots
 ![Figure 3: VQ-VAE Training Loss](README_images/VQ_VAE_Loss_Curve.png)
+
 Figure 3: VQ-VAE Training Loss
 
 This plot tracks total training loss per epoch, combining mean squared reconstruction error and vector quantisation commitment loss. The loss drops sharply from 5.41 at epoch 1 to under 0.5 by epoch 3, before smoothly flattening towards 0.03 by epoch 30 without divergence or loss spikes. This validates stable optimisation under the straight-through estimator and Adam learning rate (0.0001), demonstrating computational convergence well within the projected two-hour training budget from the feasibility report.
 
 ![Figure 4: VQ-VAE Validation SSIM](README_images/VQ_VAE_SSIM_Curve.png)
+
 Figure 4: VQ-VAE Validation SSIM
 
 This curve measures structural reconstruction fidelity across validation slices at the end of each epoch. The validation SSIM climbs steadily from 0.29 at epoch 1, passes 0.6 by epoch 8, and converges at a peak of 0.765 by epoch 30. This directly satisfies and exceeds Acceptance Criterion 1 (Validation SSIM > 0.6) from the feasibility review, confirming that discrete latent quantisation faithfully captures the hip MRI scans.
 
 ![Figure 5: VQ-VAE Codebook Perplexity](README_images/VQ_VAE_Perplexity_Curve.png)
+
 Figure 5: VQ-VAE Codebook Perplexity
 
 This plot tracks normalised codebook perplexity, measuring the active utilisation and distribution uniformity of the 32 discrete codebook vectors on validation data. Perplexity increases from 0.15 at initialisation, peaks at 0.54 around epoch 6, and stabilises into a steady plateau between 0.46 and 0.48 across epochs 15 to 30. Although it settles slightly below the target of 0.60 set in Acceptance Criterion 3, the steady plateau confirms healthy codebook participation without codebook collapse, potentially showing that hip MRI scans naturally concentrates into a compact subset of discrete tokens.
 
 ![Figure 6: PixelCNN Training Loss](README_images/PixelCNN_Loss_Curve.png)
+
 Figure 6: PixelCNN Training Loss
 
 This curve displays the cross-entropy training loss per epoch for the Gated PixelCNN prior learning the distribution over the latent codebook grid. Cross-entropy decreases quickly from 1.71 to 1.34 over the first 5 epochs and steadily decays to 1.14 by epoch 60 without oscillation. While the loss curve has not fully flattened into a plateau indicating that complete convergence has not yet been reached, 60 epochs requires substantial computational resources where further training offers diminishing returns.
 
 ![Figure 7: VAE Training Loss](README_images/VAE_Loss_Curve.png)
+
 Figure 7: VAE Training Loss
 
 This plot shows the baseline VAE training loss, computed as the sum of reconstruction MSE and KL divergence across 30 epochs. The loss falls steeply from 2 750 down to approximately 530 within 4 epochs, before plateauing near 400 from epoch 10 and onwards. This curve the matches what is seen in the preliminary feasibility smoke test.
 
 ![Figure 8: VAE Validation SSIM](README_images/VAE_SSIM_Curve.png)
+
 Figure 8: VAE Validation SSIM
 
 This curve tracks validation SSIM per epoch for the baseline VAE. The metric rises rapidly from 0.13 to around 0.33 by epoch 5, but slows noticeably around epoch 15 and caps out at 0.407 by epoch 30 with considerable fluctuations across epochs. This fails the project acceptance threshold of SSIM > 0.6. Benchmarking this 0.407 ceiling against the VQ-VAE's 0.765 illustrates that the VQ-VAE achieves significantly superior reconstruction fidelity.
