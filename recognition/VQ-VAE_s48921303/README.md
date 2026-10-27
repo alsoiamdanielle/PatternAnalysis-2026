@@ -95,10 +95,9 @@ If the VQ-VAE fails to reach target SSIM, I will expand the model capacity by sc
 - GPU memory consumption measured within train.py using PyTorch CUDA runtime APIs.
 
 ### Execution
-Execution involves a two-stage pipeline where `train.py` must be executed first followed by `predict.py`. `train.py` trains the models, tracks validation convergence, and writes the timestamped weights and training curves to disk. `predict.py` loads the saved weights to perform final test evaluation, **??**
+Execution involves a two-stage pipeline where `train.py` must be executed first followed by `predict.py`. `train.py` trains the models, tracks validation convergence, and writes the timestamped weights and training curves to disk. `predict.py` loads the saved weights to perform final test evaluation, profile computational resources (parameter counts, batch latency, and peak VRAM), compute test metrics (reconstruction SSIM, FID-2048, FID-192, and KID), and save deterministic reconstruction comparisons (`recon.png`) and generated samples (`generated.png`) to a timestamped `eval/` directory.
 
 #### 1. Model Training (`train.py`)
-
 `train.py` handles data loading with training-only data augmentation, optimiser setup, validation metric tracking, early stopping, and automatic logging of model weights, CSV metrics, and training curves.
 
 ##### CLI Arguments for `train.py`
@@ -129,6 +128,34 @@ python train.py --model vqvae --data_dir ./HipMRI --num_embeddings 32 --embeddin
 ```
 
 #### 2. Model Evaluation (`predict.py`)
+`predict.py` loads saved model weights to profile computational resources (trainable parameters, batch inference latency, and peak VRAM allocation) evaluate test reconstruction SSIM and generative distribution metrics (FID-2048, FID-192, and KID) and export deterministic reconstruction comparisons and generation to a timestamped `eval/` directory.
+
+##### CLI Arguments for `predict.py`
+
+| Argument | Type | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `--model` | `str` | Required | Architecture to evaluate: `'vqvae'` or `'vae'`. |
+| `--path` | `str` | Required | Path to the directory containing saved model checkpoint weights (`VAE.pth` or `VQVAE.pth` and `pixelCNN.pth`). |
+| `--data_dir` | `str` | Required | Root directory containing `keras_slices_test`. |
+| `--num_embeddings` | `int` | `32` | Codebook dictionary size ($K$) for VQ-VAE and token vocabulary for PixelCNN. |
+| `--embedding_dim` | `int` | `64` | Channel dimensionality ($D$) of codebook vectors and latent feature maps. |
+| `--samples` | `int` | `8` | Number of test slices to sample deterministically for reconstruction and synthetic generation grids. |
+| `--fid_samples` | `int` | `200` | Number of synthetic images generated to compute FID and KID distribution metrics. |
+| `--batch_size` | `int` | `32` | Mini-batch size for DataLoader evaluation and batched sampling. |
+| `--temperature` | `float` | `0.9` | Softmax sampling temperature for autoregressive PixelCNN prior generation. |
+| `--seed` | `int` | `42` | Random seed for deterministic test slice selection and reproducibility. |
+| `--test` | `flag` | `False` | Truncates test dataset loading to 20 slices for pipeline smoke-testing. |
+
+##### Example Evaluation Commands
+Evaluate the baseline VAE model:
+```
+python predict.py --model vae --path ./vae --data_dir ./HipMRI --embedding_dim 64 --batch_size 32 --samples 8 --fid_samples 200
+```
+
+Evaluate the VQ-VAE + PixelCNN pipeline:
+```
+python predict.py --model vqvae --path ./vqvae --data_dir ./HipMRI --num_embeddings 32 --embedding_dim 64 --batch_size 32 --samples 8 --fid_samples 200 --temperature 0.9
+```
 
 ## Preprocessing
 ### Data Preprocessing
@@ -144,7 +171,7 @@ python train.py --model vqvae --data_dir ./HipMRI --num_embeddings 32 --embeddin
 - Splits:
   - Training Set (`keras_slices_train`): 11,400 slices of shape $256 \times 128$ (after discarding the 60 outlier slices). Used to train the VQ-VAE and PixelCNN.
   - Validation Set (`keras_slices_validate`): 540 slices of shape $256 \times 128$. Evaluated at the end of each epoch to track validation SSIM and codebook perplexity, using early stopping (`patience=7`) to restore the best model weights.
-  - Test Set (`keras_slices_test`): 660 slices of shape $256 \times 128$. Reserved for `predict.py` to evaluate test metrics (SSIM, FID, KID), **??**
+  - Test Set (`keras_slices_test`): 660 slices of shape $256 \times 128$. Reserved for `predict.py` to evaluate test metrics (SSIM, FID, KID), profile computational resource usage (batch latency and peak VRAM), and output reconstruction comparisons (`recon.png`) and generation samples (`generated.png`).
 
 ## Training
 ### Architecture

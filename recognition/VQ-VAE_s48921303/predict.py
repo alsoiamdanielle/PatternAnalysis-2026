@@ -97,7 +97,9 @@ def init_fid(test_loader, feature, device):
     
 
 def init_kid(test_loader, device):
-    kid = KernelInceptionDistance(subset_size=50).to(device)
+    num_samples = len(test_loader.dataset)
+    subset_size = min(50, max(2, num_samples - 1))
+    kid = KernelInceptionDistance(subset_size=subset_size).to(device)
     
     for images in test_loader:
         images = images.to(device)
@@ -267,7 +269,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--model', required=True, choices=['vae', 'vqvae'])
     parser.add_argument('--path', required=True)
-    parser.add_argument('--data_dir', default='~/Downloads/HipMRI')
+    parser.add_argument('--data_dir', required=True, type=str)
     parser.add_argument('--num_embeddings', type=int, default=32)
     parser.add_argument('--embedding_dim', type=int, default=64)
     parser.add_argument('--samples', type=int, default=8)
