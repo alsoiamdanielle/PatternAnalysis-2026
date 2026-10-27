@@ -230,10 +230,36 @@ This curve tracks validation SSIM per epoch for the baseline VAE. The metric ris
 
 ### Input and Reconstruction
 
+### Input and Reconstruction
+
+![Figure 9: VQ-VAE Reconstruction](README_images/VQ_VAE_Reconstruction.png)
+
+Figure 9: VQ-VAE Reconstruction
+
+This figure displays 8 held-out test slices, showing the original ground truth MRI scans in the top row and their corresponding VQ-VAE reconstructions in the bottom row. The reconstructions exhibit high visual fidelity and sharpness with crisp edges and strong contrast. However, there is some perceptible blur compared to the targets, but the structure of the hip is clear.
+
+![Figure 10: VAE Reconstruction](README_images/VAE_Reconstruction.png)
+
+Figure 10: VAE Reconstruction
+
+This figure presents the baseline VAE reconstruction performance across the same 8 test slices, with ground truth scans on top and reconstructions on the bottom. While the overall global shape and intensity regions are captured, the reconstructed images exhibit heavy blurring and an obvious loss of sharp boundaries.
+
 ### Hip MRI Generation
 
+![Figure 11: VQ-VAE + PixelCNN Generation](README_images/VQ_VAE_Generation.png)
+
+Figure 11: VQ-VAE + PixelCNN Generation
+
+This figure illustrates 8 generated synthetic MRI slices sampled via the PixelCNN prior. The generated samples demonstrate convincing visual realism, showing diverse structural variations, well-defined contours, and sharp textural patterns rather than muddy artifacts. While the outputs preserve sharp edges and avoid the strong hazy blur, the internal hip structures struggle with global coherence and tend to blend together.
+
+![Figure 12: VAE Generation](README_images/VAE_Generation.png)
+
+Figure 12: VAE Generation
+
+This figure shows 8 generated synthetic slices sampled directly from the continuous Gaussian prior using the baseline VAE decoder. Although some structure saeems to be forming, the resulting samples are heavily blurred and display similar patterns inside the hip across slices.
+
 ## Investigation of the Open Research Dilemma
-### Quantitative Benchmarking Against Baseline
+### Benchmarking Against Baseline
 
 ### Computational Resource Profiling
 
