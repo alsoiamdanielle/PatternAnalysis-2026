@@ -4,6 +4,8 @@ from tqdm import tqdm
 from torch.utils.data import DataLoader, Dataset
 import os
 import glob
+import torch
+from torchvision import transforms
 
 
 def to_channels(arr: np.ndarray, dtype=np.uint8) -> np.ndarray:
@@ -76,12 +78,23 @@ def load_data_2D(imageNames, shape, normImage, dtype, early_stop, pad):
 
 
 class HipMRIDataset(Dataset):
-    def __init__(self, dir, shape=(256, 128), normImage=True, dtype=np.float32, early_stop=False, pad=False):
+    def __init__(self, dir, shape=(256, 128), normImage=True, dtype=np.float32, early_stop=False, pad=False, augment=False):
         self.img_names = sorted(glob.glob(os.path.join(dir, '*.nii*')))
         self.imgs = load_data_2D(self.img_names, shape, normImage, dtype, early_stop, pad)
+        
+        if augment:
+            self.transform = transforms.Compose([
+                transforms.RandomHorizontalFlip(p=0.5),
+                transforms.RandomAffine(degrees=5, translate=(0.02, 0.02))
+            ])
+        else:
+            self.transform = None
 
     def __len__(self):
         return len(self.imgs)
 
     def __getitem__(self, idx):
-        return self.imgs[idx]
+        img = torch.from_numpy(self.imgs[idx])
+        if self.transform is not None:
+            img = self.transform(img)
+        return img

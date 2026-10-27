@@ -30,25 +30,29 @@ class Decoder(nn.Module):
 
 
 class VAE(nn.Module):
-    def __init__(self, latent=16):
+    def __init__(self, latent=64, embedding_dim=64):
         super().__init__()
+        self.latent = latent
+        self.embedding_dim = embedding_dim
+
         self.encoder = nn.Sequential(
-            Encoder(1, 32),
-            Encoder(32, 64),
+            Encoder(1, 64),
+            Encoder(64, 128),
+            nn.Conv2d(128, embedding_dim, kernel_size=3, stride=1, padding=1),
             nn.Flatten()
         )
 
-        self.latent = latent
-        self.mean = nn.Linear(64 * 64 * 32, latent)
-        self.log_var = nn.Linear(64 * 64 * 32, latent)
+        self.mean = nn.Linear(embedding_dim * 64 * 32, latent)
+        self.log_var = nn.Linear(embedding_dim * 64 * 32, latent)
         self.fc = nn.Sequential(
-            nn.Linear(latent, 64 * 64 * 32),
+            nn.Linear(latent, embedding_dim * 64 * 32),
             nn.ReLU(),
         )
 
         self.decoder = nn.Sequential(
-            Decoder(64, 32),
-            nn.ConvTranspose2d(32, 1, kernel_size=4, stride=2, padding=1),
+            nn.Conv2d(embedding_dim, 128, kernel_size=3, stride=1, padding=1),
+            Decoder(128, 64),
+            nn.ConvTranspose2d(64, 1, kernel_size=4, stride=2, padding=1),
             nn.Sigmoid()
         )
 
@@ -62,7 +66,7 @@ class VAE(nn.Module):
         
         x = mean + std * epsilon
         x = self.fc(x)
-        x = x.view(-1, 64, 64, 32)
+        x = x.view(-1, self.embedding_dim, 64, 32)
         
         x = self.decoder(x)
 
@@ -72,7 +76,7 @@ class VAE(nn.Module):
         with torch.no_grad():
             z = torch.randn(samples, self.latent, device=device)
             gen = self.fc(z)
-            gen = gen.view(-1, 64, 64, 32)
+            gen = gen.view(-1, self.embedding_dim, 64, 32)
             gen = self.decoder(gen)
 
             return gen
@@ -101,7 +105,7 @@ class VectorQuantiser(nn.Module):
             - 2.0 * torch.matmul(flat_z_e, self.embedding.weight.t())
         ) # [B*H*W, K]
 
-        # 1. Quantization: nearest neighbor argmin inde
+        # 1. Quantisation: nearest neighbor argmin inde
         encoding_indices = torch.argmin(distances, dim=1)
         z_q = self.embedding(encoding_indices).view(z_e_perm.shape)
 
@@ -119,7 +123,7 @@ class VectorQuantiser(nn.Module):
 
 
 class VQVAE(nn.Module):
-    def __init__(self, num_embeddings=128, embedding_dim=64, commitment_cost=0.25):
+    def __init__(self, num_embeddings=64, embedding_dim=64, commitment_cost=0.25):
         super().__init__()
         self.encoder = nn.Sequential(
             Encoder(1, 64),

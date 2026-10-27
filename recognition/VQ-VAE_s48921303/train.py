@@ -359,7 +359,6 @@ def save_vqvae(vqvae, training_data, epochs, timestamp):
     os.makedirs(save_dir, exist_ok=True)
     torch.save(vqvae.state_dict(), os.path.join(save_dir, 'VQVAE.pth'))
     
-    # Use actual completed epochs in case early stopping triggered
     actual_epochs = len(training_data.data)
     
     loss_vals, ssim_vals, perp_vals = [], [], []
