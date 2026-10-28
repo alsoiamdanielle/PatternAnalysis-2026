@@ -161,20 +161,25 @@ class MaskedConv2d(nn.Module):
     def __init__(self, type, in_channels, out_channels, kernel_size=5):
         super().__init__()
         centre = kernel_size // 2
-        mask = torch.ones(kernel_size, kernel_size)
         
-        if type == 'A':
+        if type == 'V':
+            mask = torch.ones(kernel_size, kernel_size)
             mask[centre + 1:, :] = 0
-            mask[centre, centre:] = 0
-        elif type == 'B':
-            mask[centre + 1:, :] = 0
-            mask[centre, centre + 1:] = 0
+            k_size = (kernel_size, kernel_size)
+            padding = (centre, centre)
+        elif type in ('A', 'B'):
+            mask = torch.ones(1, kernel_size)
+            if type == 'A':
+                mask[0, centre:] = 0
+            else:
+                mask[0, centre + 1:] = 0
+            k_size = (1, kernel_size)
+            padding = (0, centre)
         else:
-            raise ValueError('type parameter for MaskedConv2d must either be "A" or "B"')
+            raise ValueError('type parameter for MaskedConv2d must either be "V", "A" or "B"')
             
-        self.register_buffer("mask", mask.view(1, 1, kernel_size, kernel_size))
-        
-        self.conv2d = nn.Conv2d(in_channels, out_channels, kernel_size=kernel_size, padding=centre)
+        self.register_buffer("mask", mask.unsqueeze(0).unsqueeze(0))
+        self.conv2d = nn.Conv2d(in_channels, out_channels, kernel_size=k_size, padding=padding)
 
     def forward(self, x):
         return F.conv2d(x, self.conv2d.weight * self.mask, self.conv2d.bias, padding=self.conv2d.padding)
@@ -183,12 +188,23 @@ class MaskedConv2d(nn.Module):
 class GatedMaskedConv2d(nn.Module):
     def __init__(self, type, in_channels, out_channels, kernel_size=5):
         super().__init__()
-        self.conv = MaskedConv2d(type, in_channels, out_channels * 2, kernel_size=kernel_size)
+        self.v_conv = MaskedConv2d('V', in_channels, out_channels * 2, kernel_size=kernel_size)
+        self.h_conv = MaskedConv2d(type, in_channels, out_channels * 2, kernel_size=kernel_size)
+        self.v_to_h = nn.Conv2d(out_channels * 2, out_channels * 2, kernel_size=1)
+        self.h_out = nn.Conv2d(out_channels, out_channels, kernel_size=1)
 
-    def forward(self, x):
-        h = self.conv(x)
-        filter_feat, gate_feat = torch.chunk(h, 2, dim=1)
-        return torch.tanh(filter_feat) * torch.sigmoid(gate_feat)
+    def forward(self, v, h, pos):
+        v_feat = self.v_conv(v)
+        v_shift = F.pad(v_feat[:, :, :-1, :], (0, 0, 1, 0))
+        h_feat = self.h_conv(h) + self.v_to_h(v_shift) + pos
+
+        v_f, v_g = torch.chunk(v_feat, 2, dim=1)
+        v_out = torch.tanh(v_f) * torch.sigmoid(v_g)
+
+        h_f, h_g = torch.chunk(h_feat, 2, dim=1)
+        h_out = self.h_out(torch.tanh(h_f) * torch.sigmoid(h_g))
+
+        return v_out, h_out
 
 
 class MaskedConv2dLayer(nn.Module):
@@ -198,14 +214,16 @@ class MaskedConv2dLayer(nn.Module):
         self.layer = GatedMaskedConv2d(type, in_channel, out_channel, kernel_size=kernel_size)
 
     def forward(self, x):
+        v, h, pos = x
+        v_out, h_out = self.layer(v, h, pos)
         if self.type == 'A':
-            return self.layer(x)
+            return v_out, h_out, pos
         else:
-            return x + self.layer(x)
+            return v + v_out, h + h_out, pos
 
 
 class PixelCNN(nn.Module):
-    def __init__(self, num_embeddings=128, hidden_dim=128, B_layers=10, latent_h=64, latent_w=32):
+    def __init__(self, num_embeddings=128, hidden_dim=64, B_layers=8, latent_h=64, latent_w=32):
         super().__init__()
         self.num_embeddings = num_embeddings
         self.hidden_dim = hidden_dim
@@ -213,24 +231,29 @@ class PixelCNN(nn.Module):
         self.latent_w = latent_w
         
         self.embedding = nn.Embedding(num_embeddings, hidden_dim)
+        self.row_embed = nn.Parameter(torch.randn(1, hidden_dim * 2, latent_h, 1) * 0.02)
+        self.col_embed = nn.Parameter(torch.randn(1, hidden_dim * 2, 1, latent_w) * 0.02)
+        
         self.net = nn.Sequential(
-            MaskedConv2dLayer('A', hidden_dim + 2, hidden_dim, kernel_size=7),
-            *[MaskedConv2dLayer('B', hidden_dim, hidden_dim, kernel_size=7) for _ in range(B_layers)]
+            MaskedConv2dLayer('A', hidden_dim, hidden_dim, kernel_size=5),
+            *[MaskedConv2dLayer('B', hidden_dim, hidden_dim, kernel_size=5) for _ in range(B_layers)]
         )
-        self.out_conv = nn.Conv2d(hidden_dim, num_embeddings, kernel_size=1)
+        self.out_conv = nn.Sequential(
+            nn.ReLU(),
+            nn.Conv2d(hidden_dim, hidden_dim, kernel_size=1),
+            nn.ReLU(),
+            nn.Conv2d(hidden_dim, num_embeddings, kernel_size=1)
+        )
 
     def forward(self, x):
-        embeddings = self.embedding(x.long()).permute(0, 3, 1, 2).contiguous()
-        
         b, h, w = x.shape
-        y = torch.linspace(-1, 1, h, device=x.device).view(1, 1, h, 1).expand(b, 1, h, w)
-        c = torch.linspace(-1, 1, w, device=x.device).view(1, 1, 1, w).expand(b, 1, h, w)
-        coords = torch.cat([embeddings, y, c], dim=1)
+        embeddings = self.embedding(x.long()).permute(0, 3, 1, 2).contiguous()
+        pos = self.row_embed[:, :, :h, :] + self.col_embed[:, :, :, :w]
         
-        features = self.net(coords)
+        _, features, _ = self.net((embeddings, embeddings, pos))
         return self.out_conv(features)
         
-    def sample(self, vqvae, samples, device, temperature=0.9):
+    def sample(self, vqvae, samples, device, temperature=0.9, top_k=0):
         self.eval()
         vqvae.eval()
         
@@ -238,10 +261,14 @@ class PixelCNN(nn.Module):
             tokens = torch.zeros(samples, self.latent_h, self.latent_w, device=device, dtype=torch.long)
             for r in range(self.latent_h):
                 for c in range(self.latent_w):
-                    logits = self.forward(tokens)
-                    logits_rc = logits[:, :, r, c]
+                    logits = self.forward(tokens[:, :r + 1, :])
+                    logits_rc = logits[:, :, r, c] / temperature
+
+                    if top_k > 0:
+                        v, _ = torch.topk(logits_rc, min(top_k, logits_rc.size(-1)), dim=-1)
+                        logits_rc[logits_rc < v[:, [-1]]] = -float('inf')
                     
-                    probs = F.softmax(logits_rc / temperature, dim=1)
+                    probs = F.softmax(logits_rc, dim=1)
                     sampled_tokens = torch.multinomial(probs, 1).squeeze(-1)
                     
                     tokens[:, r, c] = sampled_tokens

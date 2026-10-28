@@ -1,7 +1,7 @@
 import dataset
 import modules
 import os
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, TensorDataset
 import matplotlib.pyplot as plt
 import torch
 import torch.nn.functional as F
@@ -272,12 +272,30 @@ def train_vqvae(vqvae, train_loader, val_loader, device, epochs, lr, patience=7)
     return training_data
 
 
+def extract_tokens(vqvae, train_loader, device):
+    vqvae.eval()
+    raw_imgs = torch.from_numpy(train_loader.dataset.imgs)
+    batch_size = train_loader.batch_size
+    token_list = []
+
+    with torch.no_grad():
+        for i in range(0, len(raw_imgs), batch_size):
+            batch = raw_imgs[i:i + batch_size].to(device)
+            token_list.append(vqvae.get_codebook_indices(batch))
+
+    return torch.cat(token_list, dim=0)
+
+
 def train_pixelCNN(pixelCNN, vqvae, train_loader, device, epochs, lr):
-    optimiser = optim.Adam(pixelCNN.parameters(), lr=lr)
+    optimiser = optim.Adam(pixelCNN.parameters(), lr=lr * 10.0)
+    scheduler = optim.lr_scheduler.CosineAnnealingLR(optimiser, T_max=epochs, eta_min=lr)
     training_data = TrainingData()
     start = time.time()
     pixelCNN.train()
     vqvae.eval()
+    all_tokens = extract_tokens(vqvae, train_loader, device)
+    batch_size = train_loader.batch_size
+    num_batches = (len(all_tokens) + batch_size - 1) // batch_size
     
     for epoch in range(epochs):
         running_loss = 0
@@ -286,12 +304,11 @@ def train_pixelCNN(pixelCNN, vqvae, train_loader, device, epochs, lr):
         
         if device.type == "cuda":
             torch.cuda.reset_peak_memory_stats(device)
-                
-        for images in train_loader:
-            images = images.to(device)
-            with torch.no_grad():
-                tokens = vqvae.get_codebook_indices(images)
 
+        perm = torch.randperm(len(all_tokens), device=device)
+                
+        for i in range(0, len(all_tokens), batch_size):
+            tokens = all_tokens[perm[i:i + batch_size]]
             optimiser.zero_grad()
             
             logits = pixelCNN(tokens)
@@ -308,8 +325,9 @@ def train_pixelCNN(pixelCNN, vqvae, train_loader, device, epochs, lr):
 
             running_loss += loss.item()
 
+        scheduler.step()
         epoch_time = time.time() - epoch_start
-        avg_loss = running_loss / len(train_loader)
+        avg_loss = running_loss / num_batches
 
         if device.type == 'cuda':
             peak_vram_mb = torch.cuda.max_memory_allocated(device) / (1024 ** 2)
@@ -415,15 +433,25 @@ def main(args):
 
     elif args.model == 'vqvae':
         vqvae = modules.VQVAE(num_embeddings=args.num_embeddings, embedding_dim=args.embedding_dim).to(device)
-        vqvae_training_data = train_vqvae(vqvae, train_loader, val_loader, device, epochs=args.vqvae_epochs, lr=args.lr)
-
-        print('VQ-VAE training is done. PixelCNN training commence')
+        if args.vqvae_path is not None:
+            weights = torch.load(os.path.join(args.vqvae_path, 'VQVAE.pth'), map_location=device, weights_only=True)
+            vqvae.load_state_dict(weights)
+            vqvae_training_data = None
+            print(f'Loaded VQ-VAE from {args.vqvae_path}. PixelCNN training commence')
+        else:
+            vqvae_training_data = train_vqvae(vqvae, train_loader, val_loader, device, epochs=args.vqvae_epochs, lr=args.lr)
+            print('VQ-VAE training is done. PixelCNN training commence')
 
         pixelCNN = modules.PixelCNN(num_embeddings=args.num_embeddings).to(device)
         pixelcnn_training_data = train_pixelCNN(pixelCNN, vqvae, train_loader, device, epochs=args.pixelcnn_epochs, lr=args.lr)
         
         timestamp = datetime.now().strftime('%H-%M-%S_%d-%m-%y')
-        save_vqvae(vqvae, vqvae_training_data, args.vqvae_epochs, timestamp)
+        if vqvae_training_data is not None:
+            save_vqvae(vqvae, vqvae_training_data, args.vqvae_epochs, timestamp)
+        else:
+            save_dir = os.path.join('train', timestamp)
+            os.makedirs(save_dir, exist_ok=True)
+            torch.save(vqvae.state_dict(), os.path.join(save_dir, 'VQVAE.pth'))
         save_pixelCNN(pixelCNN, pixelcnn_training_data, args.pixelcnn_epochs, timestamp)
 
 
@@ -431,9 +459,10 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--model', required=True, choices=['vae', 'vqvae'], help="Model type: 'vae' or 'vqvae'")
     parser.add_argument('--data_dir', required=True, type=str, help="Path to HipMRI root directory")
+    parser.add_argument('--vqvae_path', type=str, default=None, help="Path to directory with existing VQVAE.pth to skip VQ-VAE training")
     parser.add_argument('--vae_epochs', type=int, default=30, help="Number of VAE training epochs")
     parser.add_argument('--vqvae_epochs', type=int, default=30, help="Number of VQ-VAE training epochs")
-    parser.add_argument('--pixelcnn_epochs', type=int, default=60, help="Number of PixelCNN training epochs")
+    parser.add_argument('--pixelcnn_epochs', type=int, default=100, help="Number of PixelCNN training epochs")
     parser.add_argument('--batch_size', type=int, default=64, help="DataLoader batch size")
     parser.add_argument('--num_embeddings', type=int, default=32)
     parser.add_argument('--embedding_dim', type=int, default=64)
