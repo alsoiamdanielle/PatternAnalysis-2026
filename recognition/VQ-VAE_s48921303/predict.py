@@ -109,7 +109,38 @@ def init_kid(test_loader, device):
     return kid
 
 
-def vae_recon_gen(vae, test_loader, fid_2048, fid_192, kid, device, samples=8, fid_samples=200, batch_size=32, seed=42):
+def audit_memorisation(generated_samples, data_dir, path, device, test=False):
+    train_dir = os.path.expanduser(os.path.join(data_dir, 'keras_slices_train'))
+    train_dataset = dataset.HipMRIDataset(train_dir, early_stop=test)
+    train_imgs = torch.from_numpy(train_dataset.imgs).to(device)
+    ssim = StructuralSimilarityIndexMeasure(data_range=1.0).to(device)
+
+    nearest_list = []
+    mse_list = []
+    ssim_list = []
+
+    with torch.no_grad():
+        for i in range(len(generated_samples)):
+            gen_i = generated_samples[i:i + 1]
+            diffs = (train_imgs - gen_i).pow(2).mean(dim=[1, 2, 3])
+            closest_idx = torch.argmin(diffs).item()
+            closest_scan = train_imgs[closest_idx:closest_idx + 1]
+
+            nearest_list.append(closest_scan)
+            mse_list.append(diffs[closest_idx].item())
+            ssim_list.append(ssim(gen_i, closest_scan).item())
+
+    nearest_tensor = torch.cat(nearest_list, dim=0)
+    cmp = torch.cat([generated_samples, nearest_tensor], dim=0)
+    save_image(cmp, os.path.join(path, 'memorisation_audit.png'), nrow=len(generated_samples))
+
+    avg_mse = sum(mse_list) / len(mse_list)
+    avg_ssim = sum(ssim_list) / len(ssim_list)
+    print(f"Nearest training neighbour audit saved to: {os.path.join(path, 'memorisation_audit.png')}")
+    print(f"Mean Nearest-Neighbour MSE to Training Set: {avg_mse:.6f} | Mean SSIM: {avg_ssim:.4f}")
+
+
+def vae_recon_gen(vae, test_loader, fid_2048, fid_192, kid, device, data_dir, samples=8, fid_samples=200, batch_size=32, test=False, seed=42):
     vae.eval()
     os.makedirs('eval', exist_ok=True)
     path = os.path.join('eval', datetime.now().strftime('%H-%M-%S_%d-%m-%y'))
@@ -151,6 +182,7 @@ def vae_recon_gen(vae, test_loader, fid_2048, fid_192, kid, device, samples=8, f
         save_image(generated_samples, os.path.join(path, 'generated.png'), nrow=samples)
 
         print('Reconstructed and generated images saved in', path, 'directory')
+        audit_memorisation(generated_samples, data_dir, path, device, test=test)
         
         generated_count = 0
         while generated_count < fid_samples:
@@ -171,7 +203,7 @@ def vae_recon_gen(vae, test_loader, fid_2048, fid_192, kid, device, samples=8, f
         print('KID is', kid_mean.item(), '+-', kid_std.item())
 
 
-def vqvae_recon_gen(vqvae, pixelcnn, test_loader, fid_2048, fid_192, kid, device, samples=8, fid_samples=200, batch_size=32, temperature=0.9, seed=42):
+def vqvae_recon_gen(vqvae, pixelcnn, test_loader, fid_2048, fid_192, kid, device, data_dir, samples=8, fid_samples=200, batch_size=32, temperature=0.9, top_k=0, test=False, seed=42):
     vqvae.eval()
     pixelcnn.eval()
     os.makedirs('eval', exist_ok=True)
@@ -191,7 +223,7 @@ def vqvae_recon_gen(vqvae, pixelcnn, test_loader, fid_2048, fid_192, kid, device
         torch.cuda.synchronize()
 
     start_time = time.time()
-    _ = pixelcnn.sample(vqvae, batch_size, device, temperature=temperature)
+    _ = pixelcnn.sample(vqvae, batch_size, device, temperature=temperature, top_k=top_k)
     if device.type == 'cuda':
         torch.cuda.synchronize()
     latency_32 = (time.time() - start_time) * 1000.0
@@ -213,16 +245,17 @@ def vqvae_recon_gen(vqvae, pixelcnn, test_loader, fid_2048, fid_192, kid, device
         save_image(cmp, os.path.join(path, 'recon.png'), nrow=samples)
         print("Average SSIM of test sample batch is", ssim(pred, images).item())
     
-        print(f"Sampling {samples} synthetic scans via PixelCNN prior (temperature={temperature})...")
-        generated_samples = pixelcnn.sample(vqvae, samples, device, temperature=temperature)
+        print(f"Sampling {samples} synthetic scans via PixelCNN prior (temperature={temperature}, top_k={top_k})...")
+        generated_samples = pixelcnn.sample(vqvae, samples, device, temperature=temperature, top_k=top_k)
         save_image(generated_samples, os.path.join(path, 'generated.png'), nrow=samples)
 
         print('Reconstructed and generated images saved in', path, 'directory')
+        audit_memorisation(generated_samples, data_dir, path, device, test=test)
         
         generated_count = 0
         while generated_count < fid_samples:
             curr_batch = min(batch_size, fid_samples - generated_count)
-            generated = pixelcnn.sample(vqvae, curr_batch, device, temperature=temperature)
+            generated = pixelcnn.sample(vqvae, curr_batch, device, temperature=temperature, top_k=top_k)
             fid_2048.update(images_convert_fid(generated), real=False)
             fid_192.update(images_convert_fid(generated), real=False)
             kid.update(images_convert_fid(generated), real=False)
@@ -240,13 +273,13 @@ def vqvae_recon_gen(vqvae, pixelcnn, test_loader, fid_2048, fid_192, kid, device
 
 def eval_vae(args, test_loader, fid_2048, fid_192, kid, device):
     vae = load_vae(args, device)
-    vae_recon_gen(vae, test_loader, fid_2048, fid_192, kid, device, samples=args.samples, fid_samples=args.fid_samples, batch_size=args.batch_size, seed=args.seed)
+    vae_recon_gen(vae, test_loader, fid_2048, fid_192, kid, device, data_dir=args.data_dir, samples=args.samples, fid_samples=args.fid_samples, batch_size=args.batch_size, test=args.test, seed=args.seed)
     
     
 def eval_vqvae(args, test_loader, fid_2048, fid_192, kid, device):
     vqvae = load_vqvae(args, device)
     pixelcnn = load_pixelcnn(args, device)
-    vqvae_recon_gen(vqvae, pixelcnn, test_loader, fid_2048, fid_192, kid, device, samples=args.samples, fid_samples=args.fid_samples, batch_size=args.batch_size, temperature=args.temperature, seed=args.seed)
+    vqvae_recon_gen(vqvae, pixelcnn, test_loader, fid_2048, fid_192, kid, device, data_dir=args.data_dir, samples=args.samples, fid_samples=args.fid_samples, batch_size=args.batch_size, temperature=args.temperature, top_k=args.top_k, test=args.test, seed=args.seed)
 
 
 def main(args):
@@ -275,7 +308,8 @@ if __name__ == '__main__':
     parser.add_argument('--samples', type=int, default=8)
     parser.add_argument('--fid_samples', type=int, default=200)
     parser.add_argument('--batch_size', type=int, default=32)
-    parser.add_argument('--temperature', type=float, default=0.9)
+    parser.add_argument('--temperature', type=float, default=0.8)
+    parser.add_argument('--top_k', type=int, default=0)
     parser.add_argument('--seed', type=int, default=42)
     parser.add_argument('--test', action='store_true')
     args = parser.parse_args()
