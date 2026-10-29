@@ -1,11 +1,7 @@
-# notes for self for what im going to write in readme.md
-- when explaining vqvae need to highlight key things such as discrete  latent variables
-- baseline model (vae) should be  matching architecture of vqvae for comparison and then what the vqvae provides that vae doesnt rather than just using baseline in paper
-
 # VQ-VAE for Generating Privacy-Preserving Synthetic Hip MRI Cohorts
 
 ## Project Description
-In this project, I aim to address the challenges of clinical data scarcity and stringent patient privacy laws by using a Vector Quantised Variational Autoencoder (VQ-VAE) to synthesise realistic 2D hip MRI cohorts. Due to strict patient confidentiality laws, medical imaging is frequently restricted from open research, leading to limited clinical datasets. This constrains the development of robust models and clinical assessment tools. To overcome these limitations, I developed a generative modelling pipeline pairing a VQ-VAE with a Gated PixelCNN prior, benchmarked against a baseline Variational Autoencoder (VAE). The primary objective is to evaluate whether discrete representation learning can faithfully capture authentic physiological tissue boundaries and anatomical structures in hip MRI scans. By generatingr realistic such realistic MRI cohorts that preserve patient privacy, I aim to expand scarce medical imaging datasets and facilitate data augmentation for downstream research.
+In this project, I aim to address the challenges of clinical data scarcity and stringent patient privacy laws by using a Vector Quantised Variational Autoencoder (VQ-VAE) to synthesise realistic 2D hip MRI cohorts. Due to strict patient confidentiality laws, medical imaging is frequently restricted from open research, leading to limited clinical datasets. This constrains the development of robust models and clinical assessment tools. To overcome these limitations, I developed a generative modelling pipeline pairing a VQ-VAE with a Gated PixelCNN prior, benchmarked against a baseline Variational Autoencoder (VAE). The primary objective is to evaluate whether discrete representation learning can faithfully capture authentic physiological tissue boundaries and anatomical structures in hip MRI scans. By generating realistic synthetic MRI cohorts that preserve patient privacy, I aim to expand scarce medical imaging datasets and facilitate data augmentation for downstream research.
 
 ## Models
 ### VQ-VAE
@@ -94,11 +90,35 @@ If the VQ-VAE fails to reach target SSIM, I will expand the model capacity by sc
 - 24 GB of VRAM accommodated full batch training (batch size of 64)
 - GPU memory consumption measured within train.py using PyTorch CUDA runtime APIs.
 
+### File Directory Structure
+```
+VQ-VAE_s48921303/
+├── README_images/
+│   ├── PixelCNN_Architecture.png
+│   ├── PixelCNN_Loss_Curve.png
+│   ├── VAE_Generation.png
+│   ├── VAE_Loss_Curve.png
+│   ├── VAE_Reconstruction.png
+│   ├── VAE_SSIM_Curve.png
+│   ├── VQ_VAE_Architecture.png
+│   ├── VQ_VAE_Generation.png
+│   ├── VQ_VAE_Generation_Memorisation_Audit.png
+│   ├── VQ_VAE_Loss_Curve.png
+│   ├── VQ_VAE_Perplexity_Curve.png
+│   ├── VQ_VAE_Reconstruction.png
+│   └── VQ_VAE_SSIM_Curve.png
+├── README.md
+├── dataset.py
+├── modules.py
+├── predict.py
+└── train.py
+```
+
 ### Execution
-Execution involves a two-stage pipeline where `train.py` must be executed first followed by `predict.py`. `train.py` trains the models, tracks validation convergence, and writes the timestamped weights and training curves to disk. `predict.py` loads the saved weights to perform final test evaluation, profile computational resources (parameter counts, batch latency, and peak VRAM), compute test metrics (reconstruction SSIM, FID-2048, FID-192, and KID), and save deterministic reconstruction comparisons (`recon.png`) and generated samples (`generated.png`) to a timestamped `eval/` directory.
+Execution involves a two-stage pipeline where `train.py` must be executed first followed by `predict.py`. `train.py` trains the models, tracks validation convergence, and writes the timestamped weights and training curves to disk. `predict.py` loads the saved weights to perform final test evaluation, profile computational resources (parameter counts, batch latency, and peak VRAM), compute test metrics (reconstruction SSIM, FID-2048, FID-192, and KID), and save deterministic reconstruction comparisons (`recon.png`), generated samples (`generated.png`), and nearest-neighbour memorisation audit grids (`memorisation_audit.png`) to a timestamped `eval/` directory.
 
 #### 1. Model Training (`train.py`)
-`train.py` handles data loading with training-only data augmentation, optimiser setup, validation metric tracking, early stopping, and automatic logging of model weights, CSV metrics, and training curves.
+`train.py` handles data loading with training-only data augmentation, optimiser setup, validation metric tracking, early stopping, and automatic logging of model weights, CSV metrics, and training curves. To accelerate PixelCNN training and eliminate redundant on-the-fly CPU data augmentations, `train.py` pre-extracts the discrete $64 \times 32$ codebook token grids directly onto the compute device prior to prior training.
 
 ##### CLI Arguments for `train.py`
 
@@ -106,6 +126,7 @@ Execution involves a two-stage pipeline where `train.py` must be executed first 
 | :--- | :--- | :--- | :--- |
 | `--model` | `str` | Required | Architecture to train: `'vqvae'` or `'vae'`. |
 | `--data_dir` | `str` | Required | Root directory containing `keras_slices_train` and `keras_slices_validate`. |
+| `--vqvae_path` | `str` | `None` | Optional path to directory containing pre-trained `VQVAE.pth` to skip VQ-VAE training. |
 | `--vqvae_epochs` | `int` | `30` | Maximum training epochs for the VQ-VAE model (monitored by early stopping). |
 | `--pixelcnn_epochs`| `int` | `60` | Training epochs for the PixelCNN. |
 | `--vae_epochs` | `int` | `30` | Maximum training epochs for the baseline VAE model. |
@@ -116,7 +137,8 @@ Execution involves a two-stage pipeline where `train.py` must be executed first 
 | `--seed` | `int` | `42` | Random seed for reproducibility. |
 | `--test` | `flag` | `False` | Truncates dataset loading to 20 slices for pipeline smoke-testing. |
 
-##### Example Training Commands
+**Example Training Commands**
+
 Train the baseline VAE model:
 ```
 python train.py --model vae --data_dir ./HipMRI --embedding_dim 64 --batch_size 64 --vae_epochs 30 --lr 0.0001
@@ -127,8 +149,13 @@ Train the VQ-VAE + PixelCNN pipeline:
 python train.py --model vqvae --data_dir ./HipMRI --num_embeddings 32 --embedding_dim 64 --batch_size 64 --vqvae_epochs 30 --pixelcnn_epochs 60 --lr 0.0001
 ```
 
+Train the PixelCNN prior using pre-trained VQ-VAE weights:
+```
+python train.py --model vqvae --data_dir ./HipMRI --vqvae_path ./vqvae --num_embeddings 32 --embedding_dim 64 --batch_size 64 --pixelcnn_epochs 60 --lr 0.0001
+```
+
 #### 2. Model Evaluation (`predict.py`)
-`predict.py` loads saved model weights to profile computational resources (trainable parameters, batch inference latency, and peak VRAM allocation) evaluate test reconstruction SSIM and generative distribution metrics (FID-2048, FID-192, and KID) and export deterministic reconstruction comparisons and generation to a timestamped `eval/` directory.
+`predict.py` loads saved model weights to profile computational resources (trainable parameters, batch inference latency, and peak VRAM allocation), evaluate test reconstruction SSIM and generative distribution metrics (FID-2048, FID-192, and KID), and export deterministic reconstruction comparisons (`recon.png`), generation samples (`generated.png`), and the nearest-neighbour memorisation audit (`memorisation_audit.png`) to a timestamped `eval/` directory.
 
 ##### CLI Arguments for `predict.py`
 
@@ -142,11 +169,13 @@ python train.py --model vqvae --data_dir ./HipMRI --num_embeddings 32 --embeddin
 | `--samples` | `int` | `8` | Number of test slices to sample deterministically for reconstruction and synthetic generation grids. |
 | `--fid_samples` | `int` | `200` | Number of synthetic images generated to compute FID and KID distribution metrics. |
 | `--batch_size` | `int` | `32` | Mini-batch size for DataLoader evaluation and batched sampling. |
-| `--temperature` | `float` | `0.9` | Softmax sampling temperature for autoregressive PixelCNN prior generation. |
+| `--temperature` | `float` | `0.8` | Softmax sampling temperature for autoregressive PixelCNN prior generation. |
+| `--top_k` | `int` | `0` | Top-k sampling threshold filtering tail tokens (0 disables). |
 | `--seed` | `int` | `42` | Random seed for deterministic test slice selection and reproducibility. |
 | `--test` | `flag` | `False` | Truncates test dataset loading to 20 slices for pipeline smoke-testing. |
 
-##### Example Evaluation Commands
+**Example Evaluation Commands**
+
 Evaluate the baseline VAE model:
 ```
 python predict.py --model vae --path ./vae --data_dir ./HipMRI --embedding_dim 64 --batch_size 32 --samples 8 --fid_samples 200
@@ -154,7 +183,7 @@ python predict.py --model vae --path ./vae --data_dir ./HipMRI --embedding_dim 6
 
 Evaluate the VQ-VAE + PixelCNN pipeline:
 ```
-python predict.py --model vqvae --path ./vqvae --data_dir ./HipMRI --num_embeddings 32 --embedding_dim 64 --batch_size 32 --samples 8 --fid_samples 200 --temperature 0.9
+python predict.py --model vqvae --path ./train/<timestamp> --data_dir ./HipMRI --num_embeddings 32 --embedding_dim 64 --batch_size 32 --samples 8 --fid_samples 200 --temperature 0.8
 ```
 
 ## Preprocessing
@@ -173,18 +202,27 @@ python predict.py --model vqvae --path ./vqvae --data_dir ./HipMRI --num_embeddi
   - Validation Set (`keras_slices_validate`): 540 slices of shape $256 \times 128$. Evaluated at the end of each epoch to track validation SSIM and codebook perplexity, using early stopping (`patience=7`) to restore the best model weights.
   - Test Set (`keras_slices_test`): 660 slices of shape $256 \times 128$. Reserved for `predict.py` to evaluate test metrics (SSIM, FID, KID), profile computational resource usage (batch latency and peak VRAM), and output reconstruction comparisons (`recon.png`) and generation samples (`generated.png`).
 
+### Dataset Directory Structure
+```
+./dataset/
+├── keras_slices_train/
+├── keras_slices_test/
+└── keras_slices_validate/
+```
+
 ## Training
 ### Architecture
 - VQ-VAE:
-  - Encoder downsamples input slices via two stride-2 convolutions with ReLU, followed by residual convolutional blocks
+  - Encoder downsamples input slices via two stride-2 convolutions with BatchNorm and ReLU, followed by a $3 \times 3$ convolution mapping to the embedding dimension
   - Vector Quantiser projects continuous latents to nearest codebook vectors via Euclidean distance with Straight-Through Estimation
-  - Decoder mirrors the encoder using residual blocks and two stride-2 transposed convolutions, ending with a Sigmoid activation
+  - Decoder mirrors the encoder using a $3 \times 3$ convolution and two stride-2 transposed convolutions with BatchNorm and ReLU, ending with a Sigmoid activation
 - Gated PixelCNN Prior:
-  - Employs stacked convolutions split into vertical and horizontal streams to eliminate receptive field blind spots
-  - Utilises gated activation units ($\tanh \odot \sigma$) and residual connections, terminating in a $1 \times 1$ convolution predicting logits over the 32 tokens
+  - Employs stacked convolutions split into vertical ($5 \times 5$) and horizontal ($1 \times 5$) streams linked by a shifted $1 \times 1$ projection to eliminate receptive field blind spots
+  - Injects learnable 2D spatial coordinate embeddings (row and column biases) into every layer to anchor global anatomical pelvic layout
+  - Utilises gated activation units ($\tanh \odot \sigma$) and residual connections across 8 masked layers, terminating in a two-stage $1 \times 1$ convolution head predicting logits over the 32 tokens
 - Baseline VAE:
   - Uses an identical encoder-decoder convolutional backbone to isolate continuous versus discrete latent behaviour
-  - Replaces quantisation with parallel convolutional heads predicting latent mean ($\mu$) and log-variance ($\log \sigma^2$) via the reparameterisation trick
+  - Replaces quantisation with fully connected linear heads predicting latent mean ($\mu$) and log-variance ($\log \sigma^2$) via the reparameterisation trick
 
 ### Hyperparameters Used
 #### Training & Optimization Hyperparameters
@@ -209,9 +247,18 @@ python predict.py --model vqvae --path ./vqvae --data_dir ./HipMRI --num_embeddi
 - Latent Feature Map Resolution: 64 x 32 (downsampled by a spatial factor of 4)
 
 #### Gated PixelCNN Prior Hyperparameters
-- Training Epochs (`--pixelcnn_epochs`): 60
+- Training Epochs (`--pixelcnn_epochs`): 100
+- Hidden Channel Dimension (`hidden_dim`): 64 channels (matches VQ-VAE embedding dimension D=64)
+- Residual Gated Layers (`B_layers`): 8 masked layers
 - Token Vocabulary Size (`num_embeddings`): 32 (matches VQ-VAE codebook size K)
+- Learning Rate Schedule: Cosine annealing decaying from $1\times 10^{-3}$ down to $1\times 10^{-4}$
 - Gradient Clipping Norm: max_norm = 1.0
+
+#### Generation & Inference Hyperparameters
+- Softmax Sampling Temperature (`--temperature`): 0.8
+- Top-k Sampling Cutoff (`--top_k`): 0 (disabled by default; supports cutoff filtering)
+- Visualisation Samples (`--samples`): 8 slices
+- Distribution Metric Samples (`--fid_samples`): 200 synthetic slices
 
 #### Baseline VAE Hyperparameters
 - Maximum Epochs (`--vae_epochs`): 30
@@ -229,19 +276,19 @@ This plot tracks total training loss per epoch, combining mean squared reconstru
 
 Figure 4: VQ-VAE Validation SSIM
 
-This curve measures structural reconstruction fidelity across validation slices at the end of each epoch. The validation SSIM climbs steadily from 0.29 at epoch 1, passes 0.6 by epoch 8, and converges at a peak of 0.765 by epoch 30. This directly satisfies and exceeds Acceptance Criterion 1 (Validation SSIM > 0.6) from the feasibility review, confirming that discrete latent quantisation faithfully captures the hip MRI scans.
+This curve measures structural reconstruction fidelity across validation slices at the end of each epoch. The validation SSIM climbs steadily from 0.29 at epoch 1, passes 0.6 by epoch 8, and reaches a peak of 0.765 by epoch 30. This directly satisfies and exceeds Acceptance Criterion 1 (Validation SSIM > 0.6) from the feasibility review, confirming that discrete latent quantisation faithfully captures the hip MRI scans.
 
 ![Figure 5: VQ-VAE Codebook Perplexity](README_images/VQ_VAE_Perplexity_Curve.png)
 
 Figure 5: VQ-VAE Codebook Perplexity
 
-This plot tracks normalised codebook perplexity, measuring the active utilisation and distribution uniformity of the 32 discrete codebook vectors on validation data. Perplexity increases from 0.15 at initialisation, peaks at 0.54 around epoch 6, and stabilises into a steady plateau between 0.46 and 0.48 across epochs 15 to 30. Although it settles slightly below the target of 0.60 set in Acceptance Criterion 3, the steady plateau confirms healthy codebook participation without codebook collapse, potentially showing that hip MRI scans naturally concentrates into a compact subset of discrete tokens.
+This plot tracks normalised codebook perplexity, measuring the active utilisation and distribution uniformity of the 32 discrete codebook vectors on validation data. Perplexity increases from 0.15 at initialisation, peaks at 0.54 around epoch 6, and drops into a plateau with some fluctuations between 0.46 and 0.48 across epochs 15 to 30. Although it settles slightly below the target of 0.60 set in Acceptance Criterion 3, the steady plateau indicates healthy codebook participation without codebook collapse, showing that hip MRI scans may naturally concentrate into a compact subset of discrete tokens.
 
 ![Figure 6: PixelCNN Training Loss](README_images/PixelCNN_Loss_Curve.png)
 
 Figure 6: PixelCNN Training Loss
 
-This curve displays the cross-entropy training loss per epoch for the Gated PixelCNN prior learning the distribution over the latent codebook grid. Cross-entropy decreases quickly from 1.71 to 1.34 over the first 5 epochs and steadily decays to 1.14 by epoch 60 without oscillation. While the loss curve has not fully flattened into a plateau indicating that complete convergence has not yet been reached, 60 epochs requires substantial computational resources where further training offers diminishing returns.
+This curve displays the cross-entropy training loss per epoch for the Gated PixelCNN prior learning the distribution over the latent codebook grid across 100 epochs. Cross-entropy decreases steeply from 1.66 down to 1.20 across the first 10 epochs as the model rapidly captures the coarse spatial layout of pelvic tissue. Following this initial drop, the loss decays smoothly without oscillation—aided by cosine learning rate annealing and gradient clipping—before flattening into an asymptotic plateau at 1.025 by epoch 100. This plateau demonstrates that the prior has converged to the natural structural entropy of the discrete latent representations ($e^{1.025} \approx 2.79$ effective token perplexity out of 32 candidates), indicating that extended training offers strictly diminishing returns while risking patient memorisation.
 
 ![Figure 7: VAE Training Loss](README_images/VAE_Loss_Curve.png)
 
@@ -254,8 +301,6 @@ This plot shows the baseline VAE training loss, computed as the sum of reconstru
 Figure 8: VAE Validation SSIM
 
 This curve tracks validation SSIM per epoch for the baseline VAE. The metric rises rapidly from 0.13 to around 0.33 by epoch 5, but slows noticeably around epoch 15 and caps out at 0.407 by epoch 30 with considerable fluctuations across epochs. This fails the project acceptance threshold of SSIM > 0.6. Benchmarking this 0.407 ceiling against the VQ-VAE's 0.765 illustrates that the VQ-VAE achieves significantly superior reconstruction fidelity.
-
-### Input and Reconstruction
 
 ### Input and Reconstruction
 
@@ -277,13 +322,19 @@ This figure presents the baseline VAE reconstruction performance across the same
 
 Figure 11: VQ-VAE + PixelCNN Generation
 
-This figure illustrates 8 generated synthetic MRI slices sampled via the PixelCNN prior. The generated samples demonstrate convincing visual realism, showing diverse structural variations, well-defined contours, and sharp textural patterns rather than muddy artifacts. While the outputs preserve sharp edges and avoid the strong hazy blur, the internal hip structures struggle with global coherence and tend to blend together.
+This figure illustrates 8 generated synthetic MRI slices sampled via the PixelCNN prior. The generated samples demonstrate some visual realism, showing diverse structural variations with somewhat well-defined contours. While the outputs preserve sharp edges and avoid the strong hazy blur, the internal hip structures struggle with global coherence and tend to blend together.
 
 ![Figure 12: VAE Generation](README_images/VAE_Generation.png)
 
 Figure 12: VAE Generation
 
 This figure shows 8 generated synthetic slices sampled directly from the continuous Gaussian prior using the baseline VAE decoder. Although some structure saeems to be forming, the resulting samples are heavily blurred and display similar patterns inside the hip across slices.
+
+### Nearest Neighbour Audit
+![Figure 13: Nearest Neighbour Audit](README_images/VQ_VAE_Generation_Memorisation_Audit.png)
+Figure 13: Nearest Neighbour Audit
+
+This figure shows 8 generated synthetic slices in the top row alongside their nearest neighbour training scans in the bottom row based on mean squared error. The generated slices capture the overall elliptical outline and the bright borders along the top and bottom edges, with some bright central regions forming. However, the internal regions lack the sharp, distinct shapes and defined boundaries seen in the real scans below, confirming that the model has not memorised specific training slices.
 
 ## Investigation of the Open Research Dilemma
 ### Benchmarking Against Baseline
@@ -308,7 +359,8 @@ This figure shows 8 generated synthetic slices sampled directly from the continu
 1. AI assisted in adjusting pixelCNN architecture and hyperparameters for generation. Again, as the point above, I didn't just blindly copy code.
 1. AI assisted in implementing measurements of distribution fidelity (FID and KID). Again, as the point above, I didn't just blindly copy code.
 1. AI assisted with wording of certain ideas I had for writing documentation in README. I always read what AI came up with and then adapted it to my liking without blinding copy and pasting.
-1. AI assisted with cleaning up of functionaly complete train.py and predict.py such helping with parsing arguments, plotting, getting codebook perplexity and etc. Again, I didn't just blindly copy code.
+1. AI assisted with cleaning up of functionaly complete train.py and predict.py such helping with parsing arguments, plotting, getting codebook perplexity and etc. Again, I didn't just blindly copy code, and rather consulted AI about any implementation
+1. AI assisted in resolving PixelCNN runtime bottlenecks. Again, as point above, I didn't just blindly copy code and verified all changes by monitoring peak VRAM.
 
 ## References
 [1] https://arxiv.org/pdf/1711.00937 - vqvae
