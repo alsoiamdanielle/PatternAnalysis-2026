@@ -141,18 +141,42 @@ Execution involves a two-stage pipeline where `train.py` must be executed first 
 
 Train the baseline VAE model:
 ```
-python train.py --model vae --data_dir ./HipMRI --embedding_dim 64 --batch_size 64 --vae_epochs 30 --lr 0.0001
+python train.py \
+  --model vae \
+  --data_dir ./HipMRI \
+  --embedding_dim 64 \
+  --batch_size 64 \
+  --vae_epochs 30 \
+  --lr 0.0001
 ```
 
 Train the VQ-VAE + PixelCNN pipeline:
 ```
-python train.py --model vqvae --data_dir ./HipMRI --num_embeddings 32 --embedding_dim 64 --batch_size 64 --vqvae_epochs 30 --pixelcnn_epochs 60 --lr 0.0001
+python train.py \
+  --model vqvae \
+  --data_dir ./HipMRI \
+  --num_embeddings 32 \
+  --embedding_dim 64 \
+  --batch_size 64 \
+  --vqvae_epochs 30 \
+  --pixelcnn_epochs 60 \
+  --lr 0.0001
 ```
 
 Train the PixelCNN prior using pre-trained VQ-VAE weights:
 ```
-python train.py --model vqvae --data_dir ./HipMRI --vqvae_path ./vqvae --num_embeddings 32 --embedding_dim 64 --batch_size 64 --pixelcnn_epochs 60 --lr 0.0001
+python train.py \
+  --model vqvae \
+  --data_dir ./HipMRI \
+  --vqvae_path ./vqvae \
+  --num_embeddings 32 \
+  --embedding_dim 64 \
+  --batch_size 64 \
+  --pixelcnn_epochs 60 \
+  --lr 0.0001
 ```
+
+Note that if you are running on Windows Command Prompt, replace `\` with `^`, and if you are running on Windows PowerShell, replace `\` with `` ` ``.
 
 #### 2. Model Evaluation (`predict.py`)
 `predict.py` loads saved model weights to profile computational resources (trainable parameters, batch inference latency, and peak VRAM allocation), evaluate test reconstruction SSIM and generative distribution metrics (FID-2048, FID-192, and KID), and export deterministic reconstruction comparisons (`recon.png`), generation samples (`generated.png`), and the nearest-neighbour memorisation audit (`memorisation_audit.png`) to a timestamped `eval/` directory.
@@ -178,12 +202,28 @@ python train.py --model vqvae --data_dir ./HipMRI --vqvae_path ./vqvae --num_emb
 
 Evaluate the baseline VAE model:
 ```
-python predict.py --model vae --path ./vae --data_dir ./HipMRI --embedding_dim 64 --batch_size 32 --samples 8 --fid_samples 200
+python predict.py \
+  --model vae \
+  --path ./vae \
+  --data_dir ./HipMRI \
+  --embedding_dim 64 \
+  --batch_size 32 \
+  --samples 8 \
+  --fid_samples 200
 ```
 
 Evaluate the VQ-VAE + PixelCNN pipeline:
 ```
-python predict.py --model vqvae --path ./train/<timestamp> --data_dir ./HipMRI --num_embeddings 32 --embedding_dim 64 --batch_size 32 --samples 8 --fid_samples 200 --temperature 0.8
+python predict.py \
+  --model vqvae \
+  --path ./train/<timestamp> \
+  --data_dir ./HipMRI \
+  --num_embeddings 32 \
+  --embedding_dim 64 \
+  --batch_size 32 \
+  --samples 8 \
+  --fid_samples 200 \
+  --temperature 0.8
 ```
 
 ## Preprocessing
@@ -288,7 +328,7 @@ This plot tracks normalised codebook perplexity, measuring the active utilisatio
 
 Figure 6: PixelCNN Training Loss
 
-This curve displays the cross-entropy training loss per epoch for the Gated PixelCNN prior learning the distribution over the latent codebook grid across 100 epochs. Cross-entropy decreases steeply from 1.66 down to 1.20 across the first 10 epochs as the model rapidly captures the coarse spatial layout of pelvic tissue. Following this initial drop, the loss decays smoothly without oscillation—aided by cosine learning rate annealing and gradient clipping—before flattening into an asymptotic plateau at 1.025 by epoch 100. This plateau demonstrates that the prior has converged to the natural structural entropy of the discrete latent representations ($e^{1.025} \approx 2.79$ effective token perplexity out of 32 candidates), indicating that extended training offers strictly diminishing returns while risking patient memorisation.
+This curve displays the cross-entropy training loss per epoch for the Gated PixelCNN prior learning the distribution over the latent codebook grid across 100 epochs. Cross-entropy decreases steeply from 1.66 down to 1.20 across the first 10 epochs. Following this initial drop, the loss decays smoothly without oscillation to a loss of 1.025 by epoch 100. Although a plateau has not been reached, the curve is flattening out and further training offers dminishing returns
 
 ![Figure 7: VAE Training Loss](README_images/VAE_Loss_Curve.png)
 
@@ -338,12 +378,38 @@ This figure shows 8 generated synthetic slices in the top row alongside their ne
 
 ## Investigation of the Open Research Dilemma
 ### Benchmarking Against Baseline
+To evaluate whether discrete representation learning offers measurable advantages over continuous latent models for medical MRI synthesis, I benchmarked the two-stage VQ-VAE + Gated PixelCNN pipeline against the baseline continuous VAE across structural fidelity, distribution quality, and computational resource metrics.
+
+| Evaluation Metric | Baseline VAE | VQ-VAE + PixelCNN | Acceptance Target | Criterion Satisfied |
+| :--- | :---: | :---: | :---: | :---: |
+| **Latent Space Formulation** | Continuous Gaussian ($\mathbb{R}^{64}$) | Discrete Codebook ($K=32, D=64$) | N/A | N/A |
+| **Trainable Parameters** | 25 709 633 | 2 835 425 | N/A | Yes (8.8$\times$ smaller) |
+| **Peak Training VRAM** | 1 367.21 MB | 1 102.48 MB (VQ) / 2 995.67 MB (PCNN) | < 5 000 MB | Yes |
+| **Validation SSIM (Peak)** | 0.4073 | 0.7642 | > 0.60 | Yes |
+| **Test Reconstruction SSIM** | 0.4533 | 0.7768 | > 0.60 | Yes (0.7768 vs 0.4533) |
+| **Normalised Codebook Perplexity** | N/A | 0.4657 (Peak 0.5370) | > 0.60 | Near Target (0.47 vs 0.60) |
+| **Distribution FID (Feature Layer 192)** | 43.6147 | 14.3403 | 15 < FID < 50 | Just under lower bound (14.34 vs 43.61) |
+| **Distribution FID (Feature Layer 2048)**| 489.4148 | 321.4369 | 15 < FID < 50 | No |
+| **Distribution KID** | 0.7304 $\pm$ 0.0226 | 0.4241 $\pm$ 0.0209 | N/A | Informational (0.31 lower) |
+| **Nearest-Neighbour Training MSE** | 0.015487 | 0.016334 | Non-zero | Yes (Novel samples) |
+| **Nearest-Neighbour Training SSIM** | 0.3008 | 0.3513 | < 0.60 | Yes (No memorisation) |
+| **Batch Inference Latency (Batch Size=32)** | 20.00 ms (0.63 ms/sample) | 23 227.38 ms (725.86 ms/sample) | < 50 ms | No |
+| **Peak Inference VRAM** | 724.74 MB | 677.49 MB | < 500 MB | Near Target (VQ-VAE lower) |
+
+To evaluate generative distribution quality, I tracked Fréchet Inception Distance (FID) and Kernel Inception Distance (KID), which measure how closely the feature distributions of synthetic scans match authentic test slices using a pre-trained Inception-v3 network [3]. Standard FID uses the final 2048-dimensional pooling layer (`feature=2048`). However, because the test split contains only 660 slices (and evaluation evaluates 200 synthetic samples), calculating statistics across 2,048 features with so few images can make the score unstable and artificially high. To address this small sample limitation, I additionally evaluated FID at feature layer 192 and KID. Layer 192 reduces the feature dimensionality ($D=192$) below the sample count ($N \ge 200$), while ith an unbiased estimator that does not suffer from small-sample bias [4]. However, using layer 192 and KID introduces trade-offs. Feature layer 192 primarily captures lower-level visual properties such as edges and local contrast rather than complex global shapes and these metrics are less standard.
+
+For reconstruction, the VQ-VAE significantly outperforms the baseline VAE, achieving a test SSIM of 0.7768 compared to the VAE's test SSIM of 0.4533 (validation peak 0.4073). As observed in Figure 9 versus Figure 10, the continuous VAE suffers from posterior collapse. The uninformative Gaussian prior causes the decoder to reconstruct the average of the distribution, resulting in blurred hip scans with poorly defined boundaries and failing acceptance criterion 1 (SSIM > 0.60). In contrast, the VQ-VAE's vector quantisation completely removes stochastic sampling noise during reconstruction, preserving sharp edges and high internal contrast.
+
+For generative, Figure 12 shows that sampling directly from the Gaussian prior in the VAE yields synthetic slices that are blurry and indistinct. This is reflected in the distribution fidelity metrics. The VAE produces an FID-2048 of 489.4148, an FID-192 of 43.6147 and a KID of 0.7304 $\pm$ 0.0226. On theo ther hand, Figure 11 shows that the sampling over the discrete token distribution in the VQ-VAE and PixelCNN pipeline yields stronger and sharper boundaries with more diverse structures. Corroborating this, the VQ-VAE and PixelCNN pipeline produces an FID-2048 of 321.4369, an FID-192 of 14.3403 and KID of 0.4241 $\pm$ 0.0209. The FIDs and KID are considerably lower, giving quantitative evidence of sigificantly more authentic hip MRI generation.
+
+However, the VQ-VAE and PixelCNN pipeline does not meet all the feasibility view acceptance criteria. As explained earlier, the high FID-2048 is a result of small number of samples in test set. Regarding FID-192, the VQ-VAE and PixelCNN pipeline was under the lower bound which was set to prevent training memororisation. However, the score only just under so it does not indicate that the model is simply memorising patient scans. For batch inference latency, it was significantly higher than anticipated, far exceeding the acceptance criterion of < 50ms. This stems from how the PixelCNN must generate all discrete latent tokens sequentially for every slice. Lastly, the peak inference VRAM was slightly higher than the acceptance criterion upper bound of 500 MB. This is not much more expensive, and is in fact lower than VAE's peak inference VRAM of 724.74 MB.
 
 ### Computational Resource Profiling
 
 ### Qualitative Error Autopsies
 
 ### Engineering Recommendations and Trade-Off Synthesis
+
 
 ## Artificial Intelligence Usage Disclosure
 ### Tools Used
@@ -363,6 +429,10 @@ This figure shows 8 generated synthetic slices in the top row alongside their ne
 1. AI assisted in resolving PixelCNN runtime bottlenecks. Again, as point above, I didn't just blindly copy code and verified all changes by monitoring peak VRAM.
 
 ## References
-[1] https://arxiv.org/pdf/1711.00937 - vqvae
+[1] A. van den Oord, O. Vinyals, and K. Kavukcuoglu, "Neural Discrete Representation Learning," *arXiv preprint arXiv:1711.00937*, 2018. Available: https://arxiv.org/abs/1711.00937
 
-[2] https://arxiv.org/pdf/1606.05328 - pixelcnn
+[2] A. van den Oord, N. Kalchbrenner, O. Vinyals, L. Espeholt, A. Graves, and K. Kavukcuoglu, "Conditional Image Generation with PixelCNN Decoders," *arXiv preprint arXiv:1606.05328*, 2016. Available: https://arxiv.org/abs/1606.05328
+
+[3] 123 of AI, "FID Score," *123 of AI*. Available: https://123ofai.com/articles/blocks/fid-score
+
+[4] APxML, "Distributional Metrics: Kernel Inception Distance (KID)," *APxML*. Available: https://apxml.com/courses/synthetic-data-gans-diffusion/chapter-5-evaluating-synthetic-data-quality/distributional-metrics-kid
