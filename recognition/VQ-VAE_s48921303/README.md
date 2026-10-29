@@ -120,7 +120,7 @@ Execution involves a two-stage pipeline where `train.py` must be executed first 
 #### 1. Model Training (`train.py`)
 `train.py` handles data loading with training-only data augmentation, optimiser setup, validation metric tracking, early stopping, and automatic logging of model weights, CSV metrics, and training curves. To accelerate PixelCNN training and eliminate redundant on-the-fly CPU data augmentations, `train.py` pre-extracts the discrete $64 \times 32$ codebook token grids directly onto the compute device prior to prior training.
 
-##### CLI Arguments for `train.py`
+**CLI Arguments for `train.py`**
 
 | Argument | Type | Default | Description |
 | :--- | :--- | :--- | :--- |
@@ -181,7 +181,7 @@ Note that if you are running on Windows Command Prompt, replace `\` with `^`, an
 #### 2. Model Evaluation (`predict.py`)
 `predict.py` loads saved model weights to profile computational resources (trainable parameters, batch inference latency, and peak VRAM allocation), evaluate test reconstruction SSIM and generative distribution metrics (FID-2048, FID-192, and KID), and export deterministic reconstruction comparisons (`recon.png`), generation samples (`generated.png`), and the nearest-neighbour memorisation audit (`memorisation_audit.png`) to a timestamped `eval/` directory.
 
-##### CLI Arguments for `predict.py`
+**CLI Arguments for `predict.py`**
 
 | Argument | Type | Default | Description |
 | :--- | :--- | :--- | :--- |
@@ -405,11 +405,31 @@ For generative, Figure 12 shows that sampling directly from the Gaussian prior i
 However, the VQ-VAE and PixelCNN pipeline does not meet all the feasibility view acceptance criteria. As explained earlier, the high FID-2048 is a result of small number of samples in test set. Regarding FID-192, the VQ-VAE and PixelCNN pipeline was under the lower bound which was set to prevent training memororisation. However, the score only just under so it does not indicate that the model is simply memorising patient scans. For batch inference latency, it was significantly higher than anticipated, far exceeding the acceptance criterion of < 50ms. This stems from how the PixelCNN must generate all discrete latent tokens sequentially for every slice. Lastly, the peak inference VRAM was slightly higher than the acceptance criterion upper bound of 500 MB. This is not much more expensive, and is in fact lower than VAE's peak inference VRAM of 724.74 MB.
 
 ### Computational Resource Profiling
+I tracked compute resources, memory consumption, and execution runtimes across both training and evaluation pipelines on an NVIDIA GeForce RTX 3090 GPU:
+
+| Resource & Profiling Metric | Baseline VAE | Stage 1: VQ-VAE | Stage 2: Gated PixelCNN | Full Pipeline (VQ-VAE + PixelCNN) |
+| :--- | :---: | :---: | :---: | :---: |
+| **Trainable Network Parameters** | 25 709 633 | 414 657 | 2 420 768 | 2 835 425 |
+| **Model Weights File Size on Disk**| 102.8 MB | 1.67 MB | 70.8 MB | 72.5 MB |
+| **Peak Training VRAM** | 1 367.21 MB | 1 102.48 MB | 2 995.67 MB | 2 995.67 MB |
+| **Average Epoch Training Duration**| 11.78 s | 11.64 s | 23.09 s | 34.73 s combined |
+| **Total Training Wall-Clock Time** | ~5.89 min (30 epochs)| ~5.82 min (30 epochs)| ~38.48 min (100 epochs)| ~44.30 min total |
+| **Peak Inference VRAM (Batch Size=32)** | 724.74 MB | N/A | N/A | 677.49 MB |
+| **Batch Inference Latency (Batch Size=32)**| 20.00 ms (0.63 ms/sample)| N/A | N/A | 23 227.38 ms (725.86 ms/sample)|
+
+#### Architectural and Parameter Footprint
+The baseline VAE requires 25.71 million parameters because its continuous latent bottleneck flattens the spatial feature map into dense linear projection layers (`Linear(131072, 64)` and `Linear(64, 131072)`). These dense connections account for over 25.29 million parameters alone, resulting in a large 102.8 MB model. In contrast, the VQ-VAE preserves 2D spatial feature space entirely through convolutional layers and a compact 32-vector codebook, requiring only 414 657 parameters (1.67 MB). Even after adding the 2.42 million parameters of the Gated PixelCNN prior, the complete two-stage generative pipeline (2.84 million parameters) is approximately 8.8 times more compact than the baseline VAE while having significantly superior structural fidelity.
+
+#### GPU Memory (VRAM) Profiling
+During training, the VQ-VAE consumed 1 102.48 MB of peak VRAM, and the baseline VAE consumed 1 367.21 MB. The Gated PixelCNN reached a peak training VRAM of 2 995.67 MB across 100 epochs. Caching the quantised discrete token grids directly into device memory to avoid repetitive convolutional forward passes kept the training well within the 5 GB budget projected in the feasibility report. During test inference, generating a batch of 32 synthetic scans required 724.74 MB of peak VRAM for the baseline VAE and 677.49 MB for the VQ-VAE + PixelCNN pipeline. While both slightly exceed the smoke-test target of Acceptance Criterion 5 (< 500 MB), the VQ-VAE and PixelCNN pipeline consumes slightly less inference VRAM than the VAE.
+
+#### Inference Latency vs Generation Speed
+The inference latency measurements highlight the fundamental computational trade-off between continuous feed-forward decoders and discrete autoregressive priors. The baseline VAE synthesises an entire batch of 32 images in 20.00 ms (0.63 ms per sample), easily satisfying acceptance criterion 4 (< 50 ms batch latency). However, this rapid generation comes at the expense of severe blur and low structural fidelity (SSIM = 0.4533, FID-192 = 43.61). In contrast, the Gated PixelCNN generates images autoregressively, requiring sequential prediction across the codebook tokens. As a result, generating a batch of 32 synthetic scans required 23 227.38 ms, corresponding to 725.86 ms per slice ($>1 100\times$ slower than the VAE).
+
 
 ### Qualitative Error Autopsies
 
 ### Engineering Recommendations and Trade-Off Synthesis
-
 
 ## Artificial Intelligence Usage Disclosure
 ### Tools Used
