@@ -120,7 +120,7 @@ Execution involves a two-stage pipeline where `train.py` must be executed first 
 #### 1. Model Training (`train.py`)
 `train.py` handles data loading with training-only data augmentation, optimiser setup, validation metric tracking, early stopping, and automatic logging of model weights, CSV metrics, and training curves. To accelerate PixelCNN training and eliminate redundant on-the-fly CPU data augmentations, `train.py` pre-extracts the discrete $64 \times 32$ codebook token grids directly onto the compute device prior to prior training.
 
-##### CLI Arguments for `train.py`
+**CLI Arguments for `train.py`**
 
 | Argument | Type | Default | Description |
 | :--- | :--- | :--- | :--- |
@@ -181,7 +181,7 @@ Note that if you are running on Windows Command Prompt, replace `\` with `^`, an
 #### 2. Model Evaluation (`predict.py`)
 `predict.py` loads saved model weights to profile computational resources (trainable parameters, batch inference latency, and peak VRAM allocation), evaluate test reconstruction SSIM and generative distribution metrics (FID-2048, FID-192, and KID), and export deterministic reconstruction comparisons (`recon.png`), generation samples (`generated.png`), and the nearest-neighbour memorisation audit (`memorisation_audit.png`) to a timestamped `eval/` directory.
 
-##### CLI Arguments for `predict.py`
+**CLI Arguments for `predict.py`**
 
 | Argument | Type | Default | Description |
 | :--- | :--- | :--- | :--- |
@@ -405,11 +405,55 @@ For generative, Figure 12 shows that sampling directly from the Gaussian prior i
 However, the VQ-VAE and PixelCNN pipeline does not meet all the feasibility view acceptance criteria. As explained earlier, the high FID-2048 is a result of small number of samples in test set. Regarding FID-192, the VQ-VAE and PixelCNN pipeline was under the lower bound which was set to prevent training memororisation. However, the score only just under so it does not indicate that the model is simply memorising patient scans. For batch inference latency, it was significantly higher than anticipated, far exceeding the acceptance criterion of < 50ms. This stems from how the PixelCNN must generate all discrete latent tokens sequentially for every slice. Lastly, the peak inference VRAM was slightly higher than the acceptance criterion upper bound of 500 MB. This is not much more expensive, and is in fact lower than VAE's peak inference VRAM of 724.74 MB.
 
 ### Computational Resource Profiling
+I tracked compute resources, memory consumption, and execution runtimes across both training and evaluation pipelines on an NVIDIA GeForce RTX 3090 GPU:
 
-### Qualitative Error Autopsies
+| Resource & Profiling Metric | Baseline VAE | Stage 1: VQ-VAE | Stage 2: Gated PixelCNN | Full Pipeline (VQ-VAE + PixelCNN) |
+| :--- | :---: | :---: | :---: | :---: |
+| **Trainable Network Parameters** | 25 709 633 | 414 657 | 2 420 768 | 2 835 425 |
+| **Model Weights File Size on Disk**| 102.8 MB | 1.67 MB | 70.8 MB | 72.5 MB |
+| **Peak Training VRAM** | 1 367.21 MB | 1 102.48 MB | 2 995.67 MB | 2 995.67 MB |
+| **Average Epoch Training Duration**| 11.78 s | 11.64 s | 23.09 s | 34.73 s combined |
+| **Total Training Wall-Clock Time** | ~5.89 min (30 epochs)| ~5.82 min (30 epochs)| ~38.48 min (100 epochs)| ~44.30 min total |
+| **Peak Inference VRAM (Batch Size=32)** | 724.74 MB | N/A | N/A | 677.49 MB |
+| **Batch Inference Latency (Batch Size=32)**| 20.00 ms (0.63 ms/sample)| N/A | N/A | 23 227.38 ms (725.86 ms/sample)|
+
+#### Architectural and Parameter Footprint
+The baseline VAE requires 25.71 million parameters because its continuous latent bottleneck flattens the spatial feature map into dense linear projection layers (`Linear(131072, 64)` and `Linear(64, 131072)`). These dense connections account for over 25.29 million parameters alone, resulting in a large 102.8 MB model. In contrast, the VQ-VAE preserves 2D spatial feature space entirely through convolutional layers and a compact 32-vector codebook, requiring only 414 657 parameters (1.67 MB). Even after adding the 2.42 million parameters of the Gated PixelCNN prior, the complete two-stage generative pipeline (2.84 million parameters) is approximately 8.8 times more compact than the baseline VAE while having significantly superior structural fidelity.
+
+#### GPU Memory (VRAM) Profiling
+During training, the VQ-VAE consumed 1 102.48 MB of peak VRAM, and the baseline VAE consumed 1 367.21 MB. The Gated PixelCNN reached a peak training VRAM of 2 995.67 MB across 100 epochs. Caching the quantised discrete token grids directly into device memory to avoid repetitive convolutional forward passes kept the training well within the 5 GB budget projected in the feasibility report. During test inference, generating a batch of 32 synthetic scans required 724.74 MB of peak VRAM for the baseline VAE and 677.49 MB for the VQ-VAE + PixelCNN pipeline. While both slightly exceed the smoke-test target of Acceptance Criterion 5 (< 500 MB), the VQ-VAE and PixelCNN pipeline consumes slightly less inference VRAM than the VAE.
+
+#### Inference Latency vs Generation Speed
+The inference latency measurements highlight the fundamental computational trade-off between continuous feed-forward decoders and discrete autoregressive priors. The baseline VAE synthesises an entire batch of 32 images in 20.00 ms (0.63 ms per sample), easily satisfying acceptance criterion 4 (< 50 ms batch latency). However, this rapid generation comes at the expense of severe blur and low structural fidelity (SSIM = 0.4533, FID-192 = 43.61). In contrast, the Gated PixelCNN generates images autoregressively, requiring sequential prediction across the codebook tokens. As a result, generating a batch of 32 synthetic scans required 23 227.38 ms, corresponding to 725.86 ms per slice ($>1 100\times$ slower than the VAE).
+
+
+### Error Autopsies
+The open research dilemma in clinical generative modelling lies in the balance between anatomical fidelity, model memorisation, and patient privacy under regulations like HIPAA and GDPR. An ideal clinical generative model must synthesise realistic anatomical structures without replicating specific patient scans from the training cohort.
+
+#### Quantitative Error Autopsies
+To verify that neither model violates patient confidentiality by memorising training data, I conducted an exhaustive nearest-neighbour audit comparing each generated slice against all 11 460 real training slices using Mean Squared Error (MSE) and SSIM (Figure 13). The quantitative audit yielded:
+- **VQ-VAE + PixelCNN:** Mean Nearest-Neighbour MSE = 0.016334 | Mean Nearest-Neighbour SSIM = 0.3513
+- **Baseline VAE:** Mean Nearest-Neighbour MSE = 0.015487 | Mean Nearest-Neighbour SSIM = 0.3008
+
+If either model had memorised patient scans, the nearest-neighbour SSIM would approach 1.0 and the MSE would approach zero. Instead, mean SSIM scores of 0.3513 and 0.3008 indicate that generated scans from both architectures are structurally distinct from their closest counterparts in the training dataset.
+
+Furthermore, the lowest SSIM on the test data is 0.7478, which is about 0.03 below the average. This tiny difference highlights the VQ-VAE'S consistent reconstruction fidelity across varying hip MRI scans, demonstrating that it any outlier failures.
+
+#### Qualitative Error Autopsies
+The baseline VAE's slightly lower SSIM reflects its blurred outputs that lack fine structural correlation with any individual scan. As shown in Figure 13 for the VQ-VAE, the generated slices (top row) share overall pelvic proportions and intensity ranges with real scans (bottom row), but display some differing internal structural patterns. This shows that the VQ-VAE and PixelCNN pipeline learnt the underlying anatomical distribution rather than replicating individual training patients, satisfying privacy laws. Also, even the test slices with the lowest reconstruction SSIM preserve clear structural boundaries and contrast, reflecting the small variance detailed in ***Quantitative Error Autopsies** and matching the visual fidelity observed in Figure 9.
+
+![Figure 14: Failure Cases](README_images/Failure_Cases.png)
+Figure 14: Representative Generated Failure Cases
+
+Despite preserving privacy and achieving strong reconstruction fidelity (SSIM = 0.7768), visual inspection of the generated synthetic slices (Figures 11 and 13) and representative failure cases (Figure 14) reveal several qualitative failure modes:
+1. **Horizontal Asymmetry:** Authentic hip MRI scans (Figue 10 top row and Figure 13 botton row) display strong horizontal symmetry but the generated samples do not. Because the PixelCNN generates tokens sequentially in a top-to-bottom, left-to-right raster sequence, the masking prevents right-side tokens from conditioning on left-side tokens in the same row [2]. Observe the first image in Figure 14. The top half of the scan exhibits a very different pattern to the bottom half. The bottom half is considerably more bright with the dark patches are closer to the inside. The top half is the opposite, where the top half is more dark and the dark patches are closer to the outside. The root trigger is how the PixelCNN generates tokens sequentially in a fixed scan order (from top to bottom and left to right). Because of the convolutional masking, when the model predicts a token on the right side, it cannot look ahead or check the left side of the scan to ensure both sides balance out. Without any explicit symmetry rule or condition telling the network that hip scans should look symmetrical, it treats each position independently based only on previous tokens. This is a systematic architectural limitation of using such an autoregressive model.
+1. **Fragmented Central Bright Region:** In authentic scans, large central bright often appear as smooth well-bounded regions with sharp borders as opposed to the generated samples that appear irregular and ill-shaped in Figure 11. The second image in Figure 14 shows 2 small central bright regions. The leftmost bright region has a flat top but the rightmost one has a pointed top. Authentic scans only have one central bright region that is often significantly large. 
+The root trigger is that the PixelCNN only focuses on small local neighbourhoods of tokens rather than the global shape of the entire image. Because the model operates on a single flat grid of latent tokens, it does not understand that there should only be one single, connected bright region in the centre. As it generates row by row, it can accidentally start two separate bright spots that fail to connect into a single shape. This is a systematic failure mode caused by the model's limited receptive field when trying to capture large, global shapes.
+1. **Inconsistent Central Bright Region:** Observe that the large central bright often appear quite frequently in authentic scans. In the synthetic samples, such central regions seem to appear less frequently. Figure 11 shows only 3 out of the 8 samples have a bright central region while Figures 10 (top row) and 13 (bottom row) have 11 out of the 16 scans have this region. Indeed, I generated 200 samples and manually counted that 156 of them did not have any sort of bright region. The root trigger is the lack of slice position conditioning combined with how autoregressive sampling handles localised features. Because generation starts at the top without any label telling the model which slice depth it is drawing, the top rows of every scan look almost identical (mostly dark background). By the time it reaches the middle rows, the model has to decide whether to start generating a bright central region. Even though authentic middle scans frequently contain this region, bright tokens make up a much smaller percentage of the total codebook tokens compared to background tokens. If the model misses the initial trigger to sample a bright token in an upper-middle row, the surrounding tokens immediately condition on that choice and default back to the more common dark and grey tokens. This is a systematic limitation where an unconditional prior under-samples localised bright structures.
+1. **Blended Internal Texture:** While the outer boundary and bright border regions are cleanly delineated, internal regions tend to blend into indistinct textures rather than forming clear boundaries between distinct structures. Look at the third image in Figure 14. This image is mostly a of black and grey areas, with the grey area having a slight structure forming. The root trigger is the small codebook size of only 32 embeddings ($K=32$). While 32 discrete vectors are plenty to capture the strong high-contrast borders and the black background, they are not enough to represent subtle differences in internal grey shades. Because of this limited capacity, slightly different internal textures are forced to map to the exact same codebook vector, causing internal regions to look washed out and blended together. This is a systematic architectural trade-off from choosing a small codebook to prevent codebook collapse and save memory.
+1. **Autoregressive Error Compounding:** Errors made in upper rows propagate downward during autoregressive sampling. When an unlikely token is sampled in an upper region, subsequent tokens must condition on this, occasionally causing distorted intensity towards the bottom of the scan. This can be seen in the last image in Figure 14. This image is mostly bright, unlike authentic scans much are mostly dark. The root trigger is how errors accumulate during sequential generation. During training, the model always looks at real slices to predict the next token. However, when generating new scans, each new token has to rely on the tokens the model previously sampled itself, with no way to correct mistakes. If the model accidentally samples an unusually bright token near the top, the layers below treat this mistake as normal context and continue generating more bright tokens to match it. This causes errors to propagate down the image, resulting in an overly bright scan. While this is an isolated failure mode that only happens occasionally when an unusual token is picked, it is an inherent risk of sequential autoregressive sampling.
 
 ### Engineering Recommendations and Trade-Off Synthesis
-
 
 ## Artificial Intelligence Usage Disclosure
 ### Tools Used

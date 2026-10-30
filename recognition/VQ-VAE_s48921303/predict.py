@@ -59,21 +59,25 @@ def get_sample_images(test_loader, samples=8, seed=42):
 
 def load_vae(args, device):
     vae = modules.VAE(embedding_dim=args.embedding_dim).to(device)
-    weights = torch.load(os.path.join(args.path, 'VAE.pth'), weights_only=True)
+    weights = torch.load(os.path.join(args.path, 'VAE.pth'), weights_only=True, map_location=device)
     vae.load_state_dict(weights)
     return vae
     
     
 def load_vqvae(args, device):
-    vqvae = modules.VQVAE(num_embeddings=args.num_embeddings, embedding_dim=args.embedding_dim).to(device)
-    weights = torch.load(os.path.join(args.path, 'VQVAE.pth'), weights_only=True)
+    weights = torch.load(os.path.join(args.path, 'VQVAE.pth'), weights_only=True, map_location=device)
+    num_embeddings = weights['vq.embedding.weight'].shape[0] if 'vq.embedding.weight' in weights else args.num_embeddings
+    embedding_dim = weights['vq.embedding.weight'].shape[1] if 'vq.embedding.weight' in weights else args.embedding_dim
+    vqvae = modules.VQVAE(num_embeddings=num_embeddings, embedding_dim=embedding_dim).to(device)
     vqvae.load_state_dict(weights)
     return vqvae
 
     
 def load_pixelcnn(args, device):
-    pixelcnn = modules.PixelCNN(num_embeddings=args.num_embeddings).to(device)
-    weights = torch.load(os.path.join(args.path, 'pixelCNN.pth'), weights_only=True)
+    weights = torch.load(os.path.join(args.path, 'pixelCNN.pth'), weights_only=True, map_location=device)
+    hidden_dim = weights['embedding.weight'].shape[1] if 'embedding.weight' in weights else args.embedding_dim
+    b_layers = max(1, len(set(int(k.split('.')[1]) for k in weights.keys() if k.startswith('net.'))) - 1)
+    pixelcnn = modules.PixelCNN(num_embeddings=args.num_embeddings, hidden_dim=hidden_dim, B_layers=b_layers).to(device)
     pixelcnn.load_state_dict(weights)
     return pixelcnn
 
