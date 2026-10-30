@@ -485,6 +485,7 @@ The empirical nearest-neighbour audit in the benchmarking table (mean MSE = 0.01
 1. AI assisted with wording of certain ideas I had for writing documentation in README. I always read what AI came up with and then adapted it to my liking without blinding copy and pasting.
 1. AI assisted with cleaning up of functionaly complete train.py and predict.py such helping with parsing arguments, plotting, getting codebook perplexity and etc. Again, I didn't just blindly copy code, and rather consulted AI about any implementation
 1. AI assisted in resolving PixelCNN runtime bottlenecks. Again, as point above, I didn't just blindly copy code and verified all changes by monitoring peak VRAM.
+1. AI generatede comments for my python files. I read through all the comments to check and had AI fix its commenting.
 
 ## References
 [1] A. van den Oord, O. Vinyals, and K. Kavukcuoglu, "Neural Discrete Representation Learning," *arXiv preprint arXiv:1711.00937*, 2018. Available: https://arxiv.org/abs/1711.00937
