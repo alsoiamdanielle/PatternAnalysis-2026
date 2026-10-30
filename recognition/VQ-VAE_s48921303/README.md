@@ -94,6 +94,7 @@ If the VQ-VAE fails to reach target SSIM, I will expand the model capacity by sc
 ```
 VQ-VAE_s48921303/
 ├── README_images/
+│   ├── Failure_Cases.png
 │   ├── PixelCNN_Architecture.png
 │   ├── PixelCNN_Loss_Curve.png
 │   ├── VAE_Generation.png
@@ -443,6 +444,7 @@ Furthermore, the lowest SSIM on the test data is 0.7478, which is about 0.03 bel
 The baseline VAE's slightly lower SSIM reflects its blurred outputs that lack fine structural correlation with any individual scan. As shown in Figure 13 for the VQ-VAE, the generated slices (top row) share overall pelvic proportions and intensity ranges with real scans (bottom row), but display some differing internal structural patterns. This shows that the VQ-VAE and PixelCNN pipeline learnt the underlying anatomical distribution rather than replicating individual training patients, satisfying privacy laws. Also, even the test slices with the lowest reconstruction SSIM preserve clear structural boundaries and contrast, reflecting the small variance detailed in ***Quantitative Error Autopsies** and matching the visual fidelity observed in Figure 9.
 
 ![Figure 14: Failure Cases](README_images/Failure_Cases.png)
+
 Figure 14: Representative Generated Failure Cases
 
 Despite preserving privacy and achieving strong reconstruction fidelity (SSIM = 0.7768), visual inspection of the generated synthetic slices (Figures 11 and 13) and representative failure cases (Figure 14) reveal several qualitative failure modes:
@@ -454,6 +456,18 @@ The root trigger is that the PixelCNN only focuses on small local neighbourhoods
 1. **Autoregressive Error Compounding:** Errors made in upper rows propagate downward during autoregressive sampling. When an unlikely token is sampled in an upper region, subsequent tokens must condition on this, occasionally causing distorted intensity towards the bottom of the scan. This can be seen in the last image in Figure 14. This image is mostly bright, unlike authentic scans much are mostly dark. The root trigger is how errors accumulate during sequential generation. During training, the model always looks at real slices to predict the next token. However, when generating new scans, each new token has to rely on the tokens the model previously sampled itself, with no way to correct mistakes. If the model accidentally samples an unusually bright token near the top, the layers below treat this mistake as normal context and continue generating more bright tokens to match it. This causes errors to propagate down the image, resulting in an overly bright scan. While this is an isolated failure mode that only happens occasionally when an unusual token is picked, it is an inherent risk of sequential autoregressive sampling.
 
 ### Engineering Recommendations and Trade-Off Synthesis
+Based on the empirical findings, error autopsies, and the resource metrics summarised in the benchmarking table under **Benchmarking Against Baseline**, I synthesise the following engineering recommendations and trade-off analyses:
+
+1. **Computational Trade-Off: Generation Latency vs Structural Fidelity:**
+The benchmarking table highlights a striking operational trade-off between the baseline VAE and the VQ-VAE and PixelCNN pipeline. The VAE synthesises a batch of 32 images in just 20.00 ms (0.63 ms per sample), easily satisfying the < 50 ms latency acceptance criterion. However, this quick generation comes with severe posterior collapse, yielding blurry reconstructions (SSIM = 0.4533) and poor generative quality (FID-192 = 43.61, KID = 0.7304). On the other hand, the VQ-VAE and PixelCNN pipeline achieves significantly better reconstruction fidelity (SSIM = 0.7768) with sharper and more realistic synthetic samples (FID-192 = 14.34, KID = 0.4241). However, this comes at the cost of heavy latency of 23 227.38 ms for a batch of 32 (725.86 ms per sample) due to sequential autoregressive token prediction. Because of this, the VQ-VAE and PixelCNN pipeline works best for offline tasks, like generating synthetic batches ahead of time for data augmentation. In such a setting, taking 725 ms per slice is completely fine, and structural fidelity is most important.
+1. **Deployment:**
+As recorded in the benchmarking table, both pipelines remain well within the 5 000 MB training VRAM target. Training the VQ-VAE stage required 1 102.48 MB, while the Gated PixelCNN prior peaked at 2 995.67 MB (compared to 1 367.21 MB for the baseline VAE). For inference, the VQ-VAE + PixelCNN pipeline required 677.49 MB of peak VRAM, which is actually lower than the baseline VAE's 724.74 MB. Even though both models just missed the strict 500 MB target, using under 700 MB to run inference and less than 3 GB for training is still very manageable. It means you can comfortably train and run the entire pipeline on everyday 6 GB to 8 GB graphics cards.
+1. **Privacy Compliance and Clinical Viability:**
+The empirical nearest-neighbour audit in the benchmarking table (mean MSE = 0.016334, mean SSIM = 0.3513) confirms that the synthetic images do not duplicate training slices, complying with patient privacy laws. This makes the synthetic cohorts safe for open distribution and research prototyping. However, the qualitative failure modes (such as bilateral asymmetry, fragmented central shapes, and blurred internal boundaries) mean the model is suitable for high-stakes clinical tasks.
+1. **Future Ideas to Resolve Limitations**
+- **Non-Autoregressive Prior:** One key drawback of the VQ-VAE and PixelCNN pipeline is that generating tokens one by one takes over 23 seconds for a batch of 32 images. Switching to a non-autoregressive model (such as a masked transformer or a diffusion model) would allow tokens to be generated in parallel rather than one at a time. This would drastically cut down generation time, bringing it much closer to the VAE's fast speed. It would also help fix other generation limitations, such as horizontal asymmetry and errors propagating down the image, because the model could look at the whole image at once instead of being forced to generate strictly from top to bottom and left to right.
+- **VQ-VAE-2** A two-level hierarchical codebook would help resolve internal boundary fragmentation without inflating model size [5].
+- **Slice-Level Conditioning:** Passing an explicit coordinates to the prior would help prevent the model from blending features from different scan depths.
 
 ## Artificial Intelligence Usage Disclosure
 ### Tools Used
@@ -480,3 +494,5 @@ The root trigger is that the PixelCNN only focuses on small local neighbourhoods
 [3] 123 of AI, "FID Score," *123 of AI*. Available: https://123ofai.com/articles/blocks/fid-score
 
 [4] APxML, "Distributional Metrics: Kernel Inception Distance (KID)," *APxML*. Available: https://apxml.com/courses/synthetic-data-gans-diffusion/chapter-5-evaluating-synthetic-data-quality/distributional-metrics-kid
+
+[5] A. Razavi, A. van den Oord, and O. Vinyals, "Generating Diverse High-Fidelity Images with VQ-VAE-2," in *Proc. NeurIPS*, 2019. Available: https://arxiv.org/abs/1906.00446
