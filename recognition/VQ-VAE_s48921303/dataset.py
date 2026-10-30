@@ -1,9 +1,13 @@
 """
-dataset.py
-
-Data loader and preprocessing module for 2D Hip MRI slice data.
-Handles reading NIfTI files, intensity normalisation, dimension filtering/padding,
-and PyTorch Dataset wrapping with optional data augmentation.
+==============================================================================
+File:        dataset.py
+Author:      Jonathan Lu
+Course:      COMP3710 / COMP7710 - Pattern Recognition
+Date:        October 2026
+Description: Data loader and preprocessing module for 2D Hip MRI slice data.
+             Handles reading NIfTI files, intensity normalisation, dimension
+             filtering/padding, and PyTorch Dataset wrapping with data augmentations.
+==============================================================================
 """
 
 import numpy as np

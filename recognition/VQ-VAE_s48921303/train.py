@@ -1,11 +1,15 @@
 """
-train.py
-
-Training, validation, resource tracking, and checkpoint saving pipeline:
-- Supports training the baseline VAE and the two-stage VQ-VAE + PixelCNN pipeline.
-- Tracks loss, validation SSIM, codebook perplexity, runtime, and peak GPU/MPS VRAM.
-- Implements validation SSIM early stopping and model checkpoint caching.
-- Generates and saves training curves (loss, SSIM, codebook perplexity) and CSV logs.
+==============================================================================
+File:        train.py
+Author:      Jonathan Lu
+Course:      COMP3710 / COMP7710 - Pattern Recognition
+Date:        October 2026
+Description: Training, validation, resource tracking, and checkpoint saving pipeline:
+             - Supports training the baseline VAE and two-stage VQ-VAE + PixelCNN pipeline.
+             - Tracks loss, validation SSIM, codebook perplexity, runtime, and peak VRAM.
+             - Implements validation SSIM early stopping and model checkpoint caching.
+             - Generates and saves training curves and CSV metric logs.
+==============================================================================
 """
 
 import dataset

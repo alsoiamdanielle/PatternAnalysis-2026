@@ -1,11 +1,16 @@
 """
-modules.py
-
-Model architecture components for Hip MRI generation and reconstruction:
-- Baseline Variational Autoencoder (VAE) with Gaussian latent sampling.
-- Vector Quantised Variational Autoencoder (VQ-VAE) with a discrete codebook.
-- Gated PixelCNN autoregressive prior with vertical and horizontal stacks
-  for sampling discrete codebook index configurations.
+==============================================================================
+File:        modules.py
+Author:      Jonathan Lu
+Course:      COMP3710 / COMP7710 - Pattern Recognition
+Date:        October 2026
+Description: Model architecture components for Hip MRI generation:
+             - Baseline Variational Autoencoder (VAE) with Gaussian latent sampling.
+             - Vector Quantised Variational Autoencoder (VQ-VAE) with discrete codebook.
+             - Gated PixelCNN autoregressive prior with vertical and horizontal stacks
+               for sampling discrete codebook index configurations.
+             Implemented purely in PyTorch without external NumPy dependencies.
+==============================================================================
 """
 
 import torch

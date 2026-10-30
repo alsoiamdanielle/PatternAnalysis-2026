@@ -1,14 +1,17 @@
 """
-predict.py
-
-Inference and evaluation driver script for Hip MRI generative models:
-- Loads trained model weights for Baseline VAE or VQ-VAE + PixelCNN.
-- Computes test set reconstruction fidelity using SSIM.
-- Measures generative distribution quality via FID (feature=2048 and 192) and KID.
-- Profiles computational resource efficiency (batch latency and peak inference VRAM).
-- Conducts an exhaustive nearest-neighbour audit against the training set to
-  verify patient privacy compliance and disprove memorisation.
-- Generates and exports comparison image figures to the 'eval/' directory.
+==============================================================================
+File:        predict.py
+Author:      Jonathan Lu
+Course:      COMP3710 / COMP7710 - Pattern Recognition
+Date:        October 2026
+Description: Inference and evaluation driver script for Hip MRI generative models:
+             - Loads trained model weights for Baseline VAE or VQ-VAE + PixelCNN.
+             - Computes test set reconstruction fidelity using SSIM.
+             - Measures generative distribution quality via FID and KID.
+             - Profiles computational resource efficiency (batch latency and peak VRAM).
+             - Conducts an exhaustive nearest-neighbour audit against the training set.
+             - Generates and exports comparison image figures to the 'eval/' directory.
+==============================================================================
 """
 
 import dataset
